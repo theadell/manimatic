@@ -1,0 +1,10 @@
+{
+  "hosted-zone:account=034867674228:domainName=aws.adelhub.com:region=eu-central-1": {
+    "Id": "/hostedzone/Z0514278SYHTSUDMGI1F",
+    "Name": "aws.adelhub.com."
+  },
+  "hosted-zone:account=034867674228:domainName=aws.adelhub.com:region=us-east-1": {
+    "Id": "/hostedzone/Z0514278SYHTSUDMGI1F",
+    "Name": "aws.adelhub.com."
+  }
+}
