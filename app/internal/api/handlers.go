@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"manimatic/internal/api/events"
 	"manimatic/internal/api/middleware"
 	"net/http"
@@ -33,9 +34,10 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx := context.Background()
 		result, err := a.manimService.GenerateScript(ctx, req.Prompt, true)
+		var msg events.Message
 		if err != nil {
 			a.logger.Error("failed to generate script", "error", err)
-			_ = a.connMgr.SendMessage(sessionID, events.Message{
+			msg = events.Message{
 				Type:   events.MessageTypeScriptUpdate,
 				Status: events.MessageStatusError,
 				Content: map[string]any{
@@ -44,18 +46,24 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 						"reason": err.Error(),
 					},
 				},
-			})
+			}
+			_ = a.connMgr.SendMessage(sessionID, msg)
 			return
 		}
-		a.logger.Info("generated manim script", "session_id", sessionID)
 
-		err = a.connMgr.SendMessage(sessionID, events.Message{
-			Type:   events.MessageTypeScriptUpdate,
-			Status: events.MessageStatusSuccess,
-			Content: map[string]string{
-				"script": result.Code,
-			},
-		})
+		msg = events.Message{
+			Type:    events.MessageTypeScriptUpdate,
+			Status:  events.MessageStatusSuccess,
+			Content: result.Code,
+		}
+		a.logger.Debug("generated manim script", "session_id", sessionID, "script", msg.Content)
+		go func() {
+			err := a.queueMgr.EnqeueMsg(context.TODO(), &msg)
+			if err != nil {
+				slog.Error("failed to enqueue message", "error", err, "message", msg)
+			}
+		}()
+		err = a.connMgr.SendMessage(sessionID, msg)
 		if err != nil {
 			a.logger.Error("failed to send message to client channel", "session_id", sessionID, "error", err)
 		}

@@ -13,6 +13,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
 func main() {
@@ -24,7 +27,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	api := api.New(cfg, logger, manimService)
+
+	awsConfig, err := awsconfig.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(cfg.SQSURL)
+	sqsClient := sqs.NewFromConfig(awsConfig)
+	api := api.New(cfg, logger, manimService, sqsClient)
 
 	server := http.Server{
 		Addr:              fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
