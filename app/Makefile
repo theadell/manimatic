@@ -8,7 +8,7 @@ BUCKET_NAME := manim-worker-bucket
 
 # Environment Variables
 ENV_FILE := .env
-
+ENV_LOCAL_FILE := .env.local
 # Start LocalStack in background
 localstack-start:
 	LOCALSTACK_HOST=localhost SERVICES=s3,sqs,ssm localstack start -d
@@ -36,10 +36,17 @@ create-bucket:
 # Source environment variables
 source-env:
 	@[ -f $(ENV_FILE) ] && export $$(grep -v '^#' $(ENV_FILE) | xargs) || echo "No .env file found"
-
+source-local-env:
+	@[ -f $(ENV_LOCAL_FILE) ] && export $$(grep -v '^#' $(ENV_LOCAL_FILE) | xargs) || echo "No .env file found"
 # Run worker locally
 run-worker: source-env
-	go run ./cmd/worker/main.go 
+	go run ./cmd/worker/main.go -log-level=debug
+run-worker-local:
+	go run ./cmd/worker/main.go -log-level=debug -localstack
+run-api: source-env
+	go run ./cmd/api/main.go -log-level=debug
+run-api-local: source-local-env
+	go run ./cmd/api/main.go -log-level=debug -localstack
 
 # Full local setup
 setup: localstack-start sleep create-task-queue create-result-queue create-bucket
@@ -59,4 +66,4 @@ send-message:
 clean: localstack-stop
 
 
-.PHONY: localstack-start localstack-stop create-task-queue create-result-queue create-bucket source-env run-worker setup sleep send-message clean
+.PHONY: localstack-start localstack-stop create-task-queue create-result-queue create-bucket source-env run-worker run-api setup sleep send-message clean
