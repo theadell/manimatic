@@ -22,7 +22,9 @@ interface MessageType {
   type: 'script' | 'video';
   sessionId: string;
   status: 'success' | 'error';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   content: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   details?: Record<string, any>;
 }
 
