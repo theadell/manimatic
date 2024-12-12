@@ -48,7 +48,7 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 					},
 				},
 			}
-			_ = a.msgRouter.SendMessage(msg)
+			_ = a.MsgRouter.SendMessage(msg)
 			return
 		}
 
@@ -65,7 +65,7 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 				slog.Error("failed to enqueue message", "error", err, "message", msg)
 			}
 		}()
-		err = a.msgRouter.SendMessage(msg)
+		err = a.MsgRouter.SendMessage(msg)
 		if err != nil {
 			a.logger.Error("failed to send message to client channel", "session_id", sessionID, "error", err)
 		}
@@ -91,10 +91,11 @@ func (a *App) sseHandler(w http.ResponseWriter, r *http.Request) {
 	rc.SetReadDeadline(noDeadline)
 	rc.SetWriteDeadline(noDeadline)
 
-	messageChan, cleanup := a.msgRouter.AddClient(id)
-	defer cleanup()
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
 
-	ctx := r.Context()
+	messageChan, cleanup := a.MsgRouter.AddClient(id)
+	defer cleanup()
 
 	// Event loop
 	for {

@@ -18,7 +18,7 @@ const (
 
 func NewS3Client(cfg config.Config, awsCfg aws.Config) *s3.Client {
 	var opts func(*s3.Options)
-	if cfg.IsLocal {
+	if cfg.UseLocalStack {
 		opts = func(o *s3.Options) {
 			o.BaseEndpoint = aws.String(localStackEndpoint)
 			o.Region = *aws.String(localStackRegion)
@@ -54,7 +54,7 @@ func (p *S3Presigner) PreSignGet(key string, expires int64) (*v4.PresignedHTTPRe
 
 func NewSQSClient(cfg config.Config, awsCfg aws.Config) *sqs.Client {
 	var opts func(*sqs.Options)
-	if cfg.IsLocal {
+	if cfg.UseLocalStack {
 		opts = func(o *sqs.Options) {
 			o.BaseEndpoint = aws.String(localStackEndpoint)
 			o.Region = *aws.String(localStackRegion)

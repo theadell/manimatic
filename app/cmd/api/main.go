@@ -59,6 +59,8 @@ func main() {
 	<-ctx.Done()
 	logger.Info("Shutting down server...")
 
+	api.MsgRouter.Shutdown()
+
 	// Create a shutdown context with a timeout
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

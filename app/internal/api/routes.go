@@ -18,6 +18,6 @@ func (a *App) setupRoutes() http.Handler {
 
 func (a *App) setupMiddleware(h http.Handler) http.Handler {
 	recovery := middleware.RecoveryMiddleware(a.logger)
-	return middleware.Chain(h, recovery, a.sm.LoadAndSave, middleware.EnsureSessionTokenMiddleware(a.sm))
+	return middleware.Chain(h, recovery, a.sm.LoadAndSave, middleware.EnsureSessionTokenMiddleware(a.sm, a.logger))
 
 }

@@ -11,8 +11,7 @@ type Config struct {
 	OpenAIKey       string
 	TaskQueueURL    string
 	ResultQueueURL  string
-	Environment     string
-	IsLocal         bool
+	UseLocalStack   bool
 	Host            string
 	Port            int
 	LogLevel        slog.Level
@@ -26,7 +25,7 @@ func LoadConfig() *Config {
 
 	config.Host = getEnvString("HOST", "localhost")
 	config.Port = getEnvInt("PORT", 8080)
-	config.Environment = getEnvString("MANIMATIC_ENVIRONMENT", "dev")
+	config.UseLocalStack = getEnvBool("USE_LOCAL_STACK")
 	config.OpenAIKey = getEnvString("OPENAI_API_KEY", "")
 	config.TaskQueueURL = getEnvString("TASK_QUEUE_URL", "http://sqs.eu-central-1.localhost:4566/000000000000/manim-task-queue")
 	config.ResultQueueURL = getEnvString("RESULT_QUEUE_URL", "http://sqs.eu-central-1.localhost:4566/000000000000/manim-result-queue")
@@ -34,11 +33,11 @@ func LoadConfig() *Config {
 	config.LogFormat = getEnvString("LOG_FORMAT", "text")
 	config.LogLevel = parseLogLevel(logLevelStr)
 	config.MaxConcurrency = getEnvInt("MAX_CONCURRENT_JOBS", 2)
-	config.VideoBucketName = getEnvString("VIDEO_BUCKET_NAME", "manim-videos-bucket")
+	config.VideoBucketName = getEnvString("VIDEO_BUCKET_NAME", "manim-worker-bucket")
 
 	flag.StringVar(&config.Host, "host", config.Host, "Server host")
 	flag.IntVar(&config.Port, "port", config.Port, "Server port")
-	flag.StringVar(&config.Environment, "env", config.Environment, "Environment (dev, staging, prod)")
+	flag.BoolVar(&config.UseLocalStack, "localstack", config.UseLocalStack, "Use localstack")
 	flag.StringVar(&config.OpenAIKey, "openai-api-key", config.OpenAIKey, "OpenAI API key")
 	flag.StringVar(&config.TaskQueueURL, "task-queue-url", config.TaskQueueURL, "Task Queue URL")
 	flag.StringVar(&config.ResultQueueURL, "result-queue-url", config.ResultQueueURL, "Result Queue URL")
@@ -52,10 +51,6 @@ func LoadConfig() *Config {
 
 	if *logLevelFlag != logLevelStr {
 		config.LogLevel = parseLogLevel(*logLevelFlag)
-	}
-
-	if config.Environment == "local" || config.Environment == "dev" || config.Environment == "development" {
-		config.IsLocal = true
 	}
 
 	return config
@@ -88,4 +83,13 @@ func parseLogLevel(levelStr string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+func getEnvBool(key string) bool {
+	vString := getEnvString(key, "false")
+	val, err := strconv.ParseBool(vString)
+	if err != nil {
+		return false
+	}
+	return val
 }

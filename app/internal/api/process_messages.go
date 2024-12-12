@@ -55,7 +55,7 @@ func (a *App) processNextVideoUpdateMessage(ctx context.Context) error {
 	}
 
 	if videoUpdateMsg.Type == events.MessageTypeVideoUpdate {
-		err = a.msgRouter.SendMessage(videoUpdateMsg)
+		err = a.MsgRouter.SendMessage(videoUpdateMsg)
 		if err != nil {
 			a.logger.Error("Failed to send message to connection manager",
 				"session_id", videoUpdateMsg.SessionId,

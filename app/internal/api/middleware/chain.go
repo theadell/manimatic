@@ -43,7 +43,7 @@ func RecoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 
 const UserSessionTokenKey string = "user_session_token"
 
-func EnsureSessionTokenMiddleware(sm *scs.SessionManager) func(http.Handler) http.Handler {
+func EnsureSessionTokenMiddleware(sm *scs.SessionManager, log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -51,6 +51,7 @@ func EnsureSessionTokenMiddleware(sm *scs.SessionManager) func(http.Handler) htt
 
 			if token == "" {
 				token = uuid.NewString()
+				slog.Debug("created a new session token", "session_id", token)
 				sm.Put(r.Context(), UserSessionTokenKey, token)
 			}
 			ctx := context.WithValue(r.Context(), UserSessionTokenKey, token)
