@@ -2,7 +2,8 @@
 
 # LocalStack Configuration
 REGION := eu-central-1
-QUEUE_NAME := manim-task-queue
+TASK_QUEUE_NAME := manim-task-queue
+RESULT_QUEUE_NAME := manim-result-queue
 BUCKET_NAME := manim-worker-bucket
 
 # Environment Variables
@@ -17,9 +18,14 @@ localstack-stop:
 	localstack stop
 
 # Create SQS Queue
-create-queue:
+create-task-queue:
 	awslocal sqs create-queue \
-		--queue-name $(QUEUE_NAME) \
+		--queue-name $(TASK_QUEUE_NAME) \
+		--region $(REGION)
+
+create-result-queue:
+	awslocal sqs create-queue \
+		--queue-name $(RESULT_QUEUE_NAME) \
 		--region $(REGION)
 
 create-bucket:
@@ -36,7 +42,7 @@ run-worker: source-env
 	go run ./cmd/worker/main.go 
 
 # Full local setup
-setup: localstack-start sleep create-queue create-bucket
+setup: localstack-start sleep create-task-queue create-result-queue create-bucket
 
 sleep:
 	sleep 2
@@ -44,7 +50,7 @@ sleep:
 send-message:
 	echo '{"type": "script", "session_id": "session_123", "status": "success", "content": "from manim import *\\n\\nclass CreateCircle(Scene):\\n    def construct(self):\\n        circle = Circle()  \\n        circle.set_fill(PINK, opacity=0.5)  \\n        self.play(Create(circle))  "}' | \
 		awslocal sqs send-message \
-		--queue-url http://localhost:4566/000000000000/$(QUEUE_NAME) \
+		--queue-url http://localhost:4566/000000000000/$(TASK_QUEUE_NAME) \
 		--message-body file:///dev/stdin \
 		--region $(REGION)
 
@@ -53,4 +59,4 @@ send-message:
 clean: localstack-stop
 
 
-.PHONY: localstack-start localstack-stop create-queue create-bucket source-env run-worker setup sleep send-message clean
+.PHONY: localstack-start localstack-stop create-task-queue create-result-queue create-bucket source-env run-worker setup sleep send-message clean
