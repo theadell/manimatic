@@ -32,7 +32,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(cfg.SQSTaskURL)
 	sqsClient := awsutils.NewSQSClient(*cfg, awsConfig)
 	api := api.New(cfg, logger, manimService, sqsClient)
 

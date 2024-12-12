@@ -50,6 +50,8 @@ func main() {
 
 	sqsClient := awsutils.NewSQSClient(*cfg, awsConfig)
 	s3Client := awsutils.NewS3Client(*cfg, awsConfig)
+	s3Presigner := awsutils.NewS3PreSigner(s3Client, cfg.VideoBucketName)
+
 	uploader := manager.NewUploader(s3Client)
 
 	// Temp directory to store the compiled videos
@@ -72,7 +74,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			default:
-				processNextMessage(ctx, log, sqsClient, uploader, cfg.S3Bucket, cfg.SQSTaskURL, tempDir, &wg, semaphore)
+				processNextMessage(ctx, log, sqsClient, uploader, cfg.VideoBucketName, s3Presigner, cfg.TaskQueueURL, cfg.ResultQueueURL, tempDir, &wg, semaphore)
 			}
 		}
 	}()
@@ -91,7 +93,9 @@ func processNextMessage(
 	client *sqs.Client,
 	s3Uploader *manager.Uploader,
 	s3Bucket string,
+	presigner *awsutils.S3Presigner,
 	queueURL string,
+	vidoeQueueUrl string,
 	tempDir string,
 	wg *sync.WaitGroup,
 	semaphore chan struct{},
@@ -99,7 +103,7 @@ func processNextMessage(
 	result, err := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
 		QueueUrl:            aws.String(queueURL),
 		MaxNumberOfMessages: 1,
-		WaitTimeSeconds:     60,
+		WaitTimeSeconds:     20,
 	})
 
 	if err != nil {
@@ -128,7 +132,7 @@ func processNextMessage(
 		defer wg.Done()
 		defer func() { <-semaphore }()
 
-		if err := processMessage(ctx, log, client, s3Uploader, s3Bucket, queueURL, msg, tempDir); err != nil {
+		if err := processMessage(ctx, log, client, s3Uploader, s3Bucket, presigner, queueURL, vidoeQueueUrl, msg, tempDir); err != nil {
 			log.Error("Message processing failed", "error", err)
 		}
 	}(&msg)
@@ -140,7 +144,9 @@ func processMessage(
 	client *sqs.Client,
 	s3Uploader *manager.Uploader,
 	s3Bucket string,
+	presigner *awsutils.S3Presigner,
 	queueURL string,
+	vidoeQueueUrl string,
 	msg *types.Message,
 	tempDir string,
 ) error {
@@ -163,6 +169,7 @@ func processMessage(
 		return fmt.Errorf("message deletion failed: %v", err)
 	}
 
+	s3Key := ""
 	if s3Bucket != "" {
 		videoFile, err := os.Open(outputPath)
 		if err != nil {
@@ -170,7 +177,7 @@ func processMessage(
 		}
 		defer videoFile.Close()
 
-		s3Key := fmt.Sprintf("manim_videos/%s.mp4", message.SessionId)
+		s3Key = fmt.Sprintf("manim_videos/%s.mp4", message.SessionId)
 		_, err = s3Uploader.Upload(ctx, &s3.PutObjectInput{
 			Bucket: aws.String(s3Bucket),
 			Key:    aws.String(s3Key),
@@ -184,6 +191,8 @@ func processMessage(
 	}
 
 	log.Info("Message processed successfully", "output", outputPath)
+
+	go presignAndEnqueueResult(ctx, log, s3Key, presigner, vidoeQueueUrl, client, message.SessionId)
 	return nil
 }
 
@@ -208,7 +217,6 @@ func compileManimScript(msg events.Message, tempDir string) (string, error) {
 	// Specify output video path
 	outputVideoPath := filepath.Join(tempDir, fmt.Sprintf("%s_output.mp4", msg.SessionId))
 
-	fmt.Println("file path", tempFile.Name())
 	// Execute Manim command
 	cmd := exec.Command("manim",
 		"-qm",
@@ -220,4 +228,43 @@ func compileManimScript(msg events.Message, tempDir string) (string, error) {
 	}
 
 	return outputVideoPath, nil
+}
+
+func presignAndEnqueueResult(
+	ctx context.Context,
+	logger *slog.Logger,
+	key string,
+	presigner *awsutils.S3Presigner,
+	queueURL string,
+	sqsClient *sqs.Client,
+	sessionId string) {
+	req, err := presigner.PreSignGet(key, 3600)
+	if err != nil {
+		logger.Error("failed to presign the video url", "err", err)
+		return
+	}
+	updateMsg := events.Message{
+		Type:      events.MessageTypeVideoUpdate,
+		SessionId: sessionId,
+		Status:    events.MessageStatusSuccess,
+		Content:   req.URL,
+		Details: map[string]any{
+			"header": req.SignedHeader,
+		},
+	}
+
+	bytes, err := json.Marshal(updateMsg)
+	if err != nil {
+		logger.Error("failed to unmarshal message body", "err", err)
+		return
+	}
+
+	_, err = sqsClient.SendMessage(ctx, &sqs.SendMessageInput{
+		QueueUrl:    aws.String(queueURL),
+		MessageBody: aws.String(string(bytes))})
+	if err != nil {
+		logger.Error("failed to send message", "err", err)
+		return
+	}
+	logger.Debug("succefully sent video message to the queue")
 }

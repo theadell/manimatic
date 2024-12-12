@@ -30,7 +30,7 @@ func New(cfg *config.Config, logger *slog.Logger, manimService *genmanim.LLMMani
 		manimService: manimService,
 		sm:           session.New(),
 		connMgr:      events.NewConnectionManager(),
-		queueMgr:     queue.New(sqsClient, cfg.SQSTaskURL),
+		queueMgr:     queue.New(sqsClient, cfg.TaskQueueURL),
 	}
 
 	h := app.setupRoutes()
