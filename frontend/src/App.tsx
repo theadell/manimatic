@@ -1,61 +1,82 @@
-import { useState, useEffect, FormEvent } from 'react';
-import {
-  Box,
-  Container,
-  Typography,
-  TextField,
-  Button,
-  CircularProgress,
-  Card,
-  CardHeader,
-  CardContent,
-  Paper,
-  createTheme,
-  ThemeProvider,
+import React, { useState, useCallback, useEffect } from 'react';
+import { 
+  Box, 
+  Container, 
+  Typography, 
+  TextField, 
+  IconButton, 
+  Grid, 
+  Snackbar, 
+  Alert,
+  createTheme, 
+  ThemeProvider, 
   CssBaseline,
-  Fade,
-  Grow,
+  Paper,
+  CircularProgress
 } from '@mui/material';
-import Grid2 from '@mui/material/Grid2'; // New MUI Grid
+import SendIcon from '@mui/icons-material/Send';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface MessageType {
   type: 'script' | 'video';
   sessionId: string;
   status: 'success' | 'error';
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  content: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  content: string;
   details?: Record<string, any>;
 }
 
-const darkTheme = createTheme({
+const theme = createTheme({
   palette: {
     mode: 'dark',
     background: {
       default: '#121212',
-      paper: '#1e1e1e',
+      paper: '#1e1e1e'
     },
     primary: {
-      main: '#3fdaae',
-    },
+      main: '#3fdaae'
+    }
   },
   typography: {
     fontFamily: 'Inter, sans-serif',
+    h1: {
+      fontSize: '2.5rem',
+      fontWeight: 700
+    }
+  },
+  components: {
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 16,
+            backgroundColor: 'rgba(255,255,255,0.05)',
+          }
+        }
+      }
+    }
   }
 });
 
-function App() {
+function AnimationGenerator() {
   const [prompt, setPrompt] = useState('');
   const [script, setScript] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
-    setIsLoading(true);
+  const handleGenerate = useCallback(async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!prompt.trim()) {
+      setError('Please enter a prompt');
+      return;
+    }
+
+    setIsGenerating(true);
     setScript('');
     setVideoUrl('');
+    setError(null);
 
     try {
       const response = await fetch('/api/generate', {
@@ -69,9 +90,18 @@ function App() {
       }
     } catch (error) {
       console.error('Error generating content:', error);
-      setIsLoading(false);
+      setError('Failed to generate animation. Please try again.');
+      setIsGenerating(false);
     }
-  }
+  }, [prompt]);
+
+  const handleCopyScript = useCallback(() => {
+    if (script) {
+      navigator.clipboard.writeText(script)
+        .then(() => setError('Script copied to clipboard'))
+        .catch(() => setError('Failed to copy script'));
+    }
+  }, [script]);
 
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
@@ -84,7 +114,7 @@ function App() {
           break;
         case 'video':
           setVideoUrl(message.content);
-          setIsLoading(false);
+          setIsGenerating(false);
           break;
       }
     };
@@ -92,7 +122,8 @@ function App() {
     eventSource.onerror = (error) => {
       console.error('EventSource failed:', error);
       eventSource.close();
-      setIsLoading(false);
+      setIsGenerating(false);
+      setError('Connection error. Please refresh and try again.');
     };
 
     return () => {
@@ -101,190 +132,207 @@ function App() {
   }, []);
 
   return (
-    <ThemeProvider theme={darkTheme}>
+    <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box 
+      <Container 
+        maxWidth="lg" 
         sx={{ 
-          width: '100vw', 
-          height: '100vh', 
           display: 'flex', 
-          flexDirection: 'column'
+          flexDirection: 'column', 
+          height: '100vh', 
+          py: 4 
         }}
       >
-        {/* Header */}
-        <Container sx={{ pt: 8, pb: 2, textAlign: 'center', flexShrink: 0 }} component="div">
-          <Typography variant="h3" component="h1" gutterBottom>
-            Manimatic
-          </Typography>
-          <Typography variant="subtitle1" color="text.secondary">
-            Generate animations from a single prompt
-          </Typography>
-        </Container>
+        <Typography 
+          variant="h1" 
+          align="center" 
+          color="primary"
+          sx={{ mb: 4 }}
+        >
+          Manimatic
+        </Typography>
 
-        {/* Main Content Area */}
-        <Container 
+        {/* Content Area */}
+        <Box 
           sx={{ 
-            flex: 1, 
-            position: 'relative', 
-            pb: '100px', 
+            flexGrow: 1, 
             display: 'flex', 
-            flexDirection: 'column',
+            flexDirection: 'column', 
             overflow: 'hidden' 
           }}
-          component="div"
         >
-          <Paper 
-            elevation={2} 
-            sx={{
-              p: 4, 
-              borderRadius: 2, 
-              bgcolor: 'background.paper', 
-              flex: 1, 
-              display: 'flex', 
-              flexDirection: 'column',
-              overflow: 'hidden'
+          {/* Results Grid */}
+          <Grid 
+            container 
+            spacing={3} 
+            sx={{ 
+              flexGrow: 1, 
+              mb: 2, 
+              overflowY: 'auto' 
             }}
-            component="div"
           >
-            {(script || videoUrl) ? (
-              <Grid2 
-                container 
-                spacing={4} 
-                sx={{ flex: 1 }}
-                component="div"
-              >
-                {script && (
-                  <Grid2 
-                    component="div"
-                    size={{ xs: 12, sm: 6 }}
-                    sx={{ display: 'flex', flexDirection: 'column' }}
-                  >
-                    <Grow in={true} style={{ transformOrigin: '0 0 0' }} timeout={600}>
-                      <Card variant="outlined" sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                        <CardHeader title="Script" />
-                        <CardContent 
-                          sx={{ 
-                            flex: 1, 
-                            overflowY: 'auto',
-                            '&::-webkit-scrollbar': { width: 6 },
-                            scrollbarWidth: 'thin',
-                            bgcolor: 'background.default'
-                          }}
-                        >
-                          <Box 
-                            component="pre" 
-                            sx={{ 
-                              whiteSpace: 'pre-wrap', 
-                              fontFamily: 'monospace', 
-                              fontSize: 14, 
-                              color: 'text.primary',
-                              m: 0
-                            }}
-                          >
-                            {script}
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    </Grow>
-                  </Grid2>
-                )}
-
+            {/* Video Column */}
+            <Grid item xs={12} md={6}>
+              <AnimatePresence>
                 {videoUrl && (
-                  <Grid2 
-                    component="div"
-                    size={{ xs: 12, sm: 6 }}
-                    sx={{ display: 'flex', flexDirection: 'column' }}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
                   >
-                    <Grow in={true} style={{ transformOrigin: '0 0 0' }} timeout={800}>
-                      <Card variant="outlined" sx={{ flex: 1, display: 'flex', flexDirection: 'column'}}>
-                        <CardHeader title="Video" />
-                        <CardContent 
+                    <Paper 
+                      elevation={3} 
+                      sx={{ 
+                        p: 2, 
+                        borderRadius: 2, 
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                    >
+                      <Typography 
+                        variant="h6" 
+                        color="primary" 
+                        sx={{ mb: 2 }}
+                      >
+                        Generated Animation
+                      </Typography>
+                      <video 
+                        src={videoUrl} 
+                        controls 
+                        style={{ 
+                          width: '100%', 
+                          borderRadius: 16, 
+                          boxShadow: '0 10px 25px rgba(0,0,0,0.2)' 
+                        }} 
+                      />
+                    </Paper>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Grid>
+
+            {/* Script Column */}
+            <Grid item xs={12} md={6}>
+              <AnimatePresence>
+                {script && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                  >
+                    <Paper 
+                      elevation={3} 
+                      sx={{ 
+                        p: 2, 
+                        borderRadius: 2, 
+                        height: '100%',
+                        position: 'relative',
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                    >
+                      <Typography 
+                        variant="h6" 
+                        color="primary" 
+                        sx={{ mb: 2 }}
+                      >
+                        Animation Script
+                      </Typography>
+                      <IconButton
+                        color="primary"
+                        onClick={handleCopyScript}
+                        sx={{ 
+                          position: 'absolute', 
+                          top: 8, 
+                          right: 8 
+                        }}
+                      >
+                        <ContentCopyIcon />
+                      </IconButton>
+                      <Box 
+                        sx={{ 
+                          flexGrow: 1, 
+                          overflowY: 'auto',
+                          backgroundColor: 'rgba(255,255,255,0.05)',
+                          borderRadius: 2,
+                          p: 2
+                        }}
+                      >
+                        <Typography 
+                          component="pre" 
+                          variant="body2"
                           sx={{ 
-                            flex: 1, 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            p: 2 
+                            fontFamily: 'monospace', 
+                            whiteSpace: 'pre-wrap', 
+                            margin: 0
                           }}
                         >
-                          <Box
-                            component="video"
-                            src={videoUrl}
-                            controls
-                            style={{
-                              width: '100%', 
-                              height: 'auto',
-                              maxHeight: '100%',
-                              borderRadius: '4px',
-                              objectFit: 'contain'
-                            }}
-                          />
-                        </CardContent>
-                      </Card>
-                    </Grow>
-                  </Grid2>
+                          {script}
+                        </Typography>
+                      </Box>
+                    </Paper>
+                  </motion.div>
                 )}
-              </Grid2>
-            ) : (
-              !isLoading && (
-                <Fade in={!isLoading} timeout={500}>
-                  <Typography variant="body1" color="text.secondary" align="center" sx={{ mt: 10 }}>
-                    Enter a prompt below to generate your animation...
-                  </Typography>
-                </Fade>
-              )
-            )}
-          </Paper>
-        </Container>
+              </AnimatePresence>
+            </Grid>
+          </Grid>
 
-        {/* Input Bar at bottom */}
-        <Box
-          component="form"
-          onSubmit={handleSubmit}
+          {/* Loading Indicator */}
+          {isGenerating && (
+            <Box display="flex" justifyContent="center" width="100%" sx={{ mb: 2 }}>
+              <CircularProgress color="primary" />
+            </Box>
+          )}
+        </Box>
+
+        {/* Prompt Input */}
+        <Box 
+          component="form" 
+          onSubmit={handleGenerate}
           sx={{ 
-            position: 'fixed', 
-            bottom: 0, 
-            left: 0, 
-            width: '100%', 
-            bgcolor: 'background.paper', 
-            borderTop: '1px solid', 
-            borderColor: 'grey.700', 
-            py: 2 
+            mt: 2, 
+            width: '100%' 
           }}
         >
-          <Container maxWidth="lg" sx={{ display: 'flex', gap: 2 }} component="div">
-            <TextField
-              fullWidth
-              variant="outlined"
-              placeholder="Enter your animation prompt..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={isLoading}
-              InputProps={{
-                sx: { bgcolor: 'grey.900', color: 'grey.50' }
-              }}
-            />
-            <Button 
-              type="submit" 
-              variant="contained" 
-              color="primary" 
-              disabled={isLoading}
-              sx={{ minWidth: '120px' }}
-            >
-              {isLoading ? (
-                <>
-                  <CircularProgress size={20} color="inherit" sx={{ mr: 1 }}/>
-                  Generating...
-                </>
-              ) : (
-                'Generate'
-              )}
-            </Button>
-          </Container>
+          <TextField
+            fullWidth
+            variant="outlined"
+            placeholder="Describe your animation..."
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            disabled={isGenerating}
+            InputProps={{
+              endAdornment: (
+                <IconButton 
+                  color="primary" 
+                  type="submit"
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? <CircularProgress size={24} /> : <SendIcon />}
+                </IconButton>
+              )
+            }}
+          />
         </Box>
-      </Box>
+
+        <Snackbar
+          open={!!error}
+          autoHideDuration={6000}
+          onClose={() => setError(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert 
+            onClose={() => setError(null)} 
+            severity={error?.includes('copied') ? 'success' : 'error'}
+            sx={{ width: '100%' }}
+          >
+            {error}
+          </Alert>
+        </Snackbar>
+      </Container>
     </ThemeProvider>
   );
 }
 
-export default App;
+export default AnimationGenerator;
