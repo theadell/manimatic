@@ -6,6 +6,7 @@ import (
 	"log"
 	"manimatic/internal/api"
 	"manimatic/internal/api/genmanim"
+	"manimatic/internal/awsutils"
 	"manimatic/internal/config"
 	"manimatic/internal/logger"
 	"net/http"
@@ -15,14 +16,13 @@ import (
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 )
 
 func main() {
 
 	cfg := config.LoadConfig()
 
-	logger := logger.NewLogger(cfg.Env)
+	logger := logger.NewLogger(cfg)
 	manimService, err := genmanim.NewLLMManimService(cfg.OpenAIKey)
 	if err != nil {
 		log.Fatal(err)
@@ -32,8 +32,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(cfg.SQSURL)
-	sqsClient := sqs.NewFromConfig(awsConfig)
+	fmt.Println(cfg.SQSTaskURL)
+	sqsClient := awsutils.NewSQSClient(*cfg, awsConfig)
 	api := api.New(cfg, logger, manimService, sqsClient)
 
 	server := http.Server{

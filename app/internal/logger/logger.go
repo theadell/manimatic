@@ -2,22 +2,22 @@ package logger
 
 import (
 	"log/slog"
+	"manimatic/internal/config"
 	"os"
 )
 
-func NewLogger(env string) *slog.Logger {
-
+func NewLogger(cfg *config.Config) *slog.Logger {
 	var handler slog.Handler
 	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: cfg.LogLevel,
 	}
 
-	if env == "production" {
+	switch cfg.LogFormat {
+	case "json":
 		handler = slog.NewJSONHandler(os.Stdout, opts)
-	} else {
+	default:
 		handler = slog.NewTextHandler(os.Stdout, opts)
 	}
 
-	logger := slog.New(handler)
-	return logger
+	return slog.New(handler)
 }

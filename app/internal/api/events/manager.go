@@ -20,10 +20,11 @@ const (
 )
 
 type Message struct {
-	Type    MessageType    `json:"type"`
-	Status  MessageStatus  `json:"status"`
-	Content any            `json:"content"`
-	Details map[string]any `json:"details,omitempty"`
+	Type      MessageType    `json:"type"`
+	SessionId string         `json:"session_id"`
+	Status    MessageStatus  `json:"status"`
+	Content   any            `json:"content"`
+	Details   map[string]any `json:"details,omitempty"`
 }
 
 type ConnectionManager struct {

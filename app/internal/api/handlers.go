@@ -52,11 +52,12 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 		}
 
 		msg = events.Message{
-			Type:    events.MessageTypeScriptUpdate,
-			Status:  events.MessageStatusSuccess,
-			Content: result.Code,
+			Type:      events.MessageTypeScriptUpdate,
+			SessionId: sessionID,
+			Status:    events.MessageStatusSuccess,
+			Content:   result.Code,
 		}
-		a.logger.Debug("generated manim script", "session_id", sessionID, "script", msg.Content)
+		a.logger.Info("generated manim script", "session_id", sessionID, "script", msg.Content)
 		go func() {
 			err := a.queueMgr.EnqeueMsg(context.TODO(), &msg)
 			if err != nil {
