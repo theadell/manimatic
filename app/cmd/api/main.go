@@ -19,7 +19,6 @@ import (
 )
 
 func main() {
-
 	cfg := config.LoadConfig()
 
 	logger := logger.NewLogger(cfg)
@@ -35,6 +34,11 @@ func main() {
 	sqsClient := awsutils.NewSQSClient(*cfg, awsConfig)
 	api := api.New(cfg, logger, manimService, sqsClient)
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	api.StartMessageProcessor(ctx)
+
 	server := http.Server{
 		Addr:              fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Handler:           api,
@@ -43,23 +47,24 @@ func main() {
 		WriteTimeout:      time.Second * 5,
 	}
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
 	go func() {
 		logger.Info(fmt.Sprintf("Server is running on port %d", cfg.Port))
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Server failed to start", "err", err.Error())
-			os.Exit(1)
+			stop()
 		}
 	}()
 
-	<-stop
+	// Wait for stop signal
+	<-ctx.Done()
 	logger.Info("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+	// Create a shutdown context with a timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
+	// Shutdown the server
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("Server forced to shutdown", "err", err.Error())
 	}
 

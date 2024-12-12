@@ -23,7 +23,7 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 		a.badRequestResponse(w, "invalid request body")
 	}
 
-	sessionID := a.sm.GetString(r.Context(), string(middleware.UserSessionTokenKey))
+	sessionID := a.sm.GetString(r.Context(), middleware.UserSessionTokenKey)
 	if sessionID == "" {
 		a.serverError(w, fmt.Errorf("invalid, missing or expired session"))
 		return
@@ -38,8 +38,9 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			a.logger.Error("failed to generate script", "error", err)
 			msg = events.Message{
-				Type:   events.MessageTypeScriptUpdate,
-				Status: events.MessageStatusError,
+				Type:      events.MessageTypeScriptUpdate,
+				Status:    events.MessageStatusError,
+				SessionId: sessionID,
 				Content: map[string]any{
 					"message": "Failed to generate script",
 					"details": map[string]any{
@@ -47,7 +48,7 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 					},
 				},
 			}
-			_ = a.connMgr.SendMessage(sessionID, msg)
+			_ = a.msgRouter.SendMessage(msg)
 			return
 		}
 
@@ -57,14 +58,14 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 			Status:    events.MessageStatusSuccess,
 			Content:   result.Code,
 		}
-		a.logger.Info("generated manim script", "session_id", sessionID, "script", msg.Content)
+		a.logger.Info("generated manim script", "session_id", sessionID)
 		go func() {
 			err := a.queueMgr.EnqeueMsg(context.TODO(), &msg)
 			if err != nil {
 				slog.Error("failed to enqueue message", "error", err, "message", msg)
 			}
 		}()
-		err = a.connMgr.SendMessage(sessionID, msg)
+		err = a.msgRouter.SendMessage(msg)
 		if err != nil {
 			a.logger.Error("failed to send message to client channel", "session_id", sessionID, "error", err)
 		}
@@ -73,16 +74,16 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) sseHandler(w http.ResponseWriter, r *http.Request) {
-
-	id := a.sm.Token(r.Context())
+	id := a.sm.GetString(r.Context(), string(middleware.UserSessionTokenKey))
 	if id == "" {
-		a.serverError(w, fmt.Errorf("failed to load session"))
+		a.serverError(w, fmt.Errorf("invalid, missing or expired session"))
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	rc := http.NewResponseController(w)
 
@@ -90,32 +91,34 @@ func (a *App) sseHandler(w http.ResponseWriter, r *http.Request) {
 	rc.SetReadDeadline(noDeadline)
 	rc.SetWriteDeadline(noDeadline)
 
-	// Add connection to manager
-	ch := a.connMgr.AddConnection(id)
-	defer a.connMgr.RemoveConnection(id)
+	messageChan, cleanup := a.msgRouter.AddClient(id)
+	defer cleanup()
 
-	// Send events from the channel to the client
-	enc := json.NewEncoder(w)
+	ctx := r.Context()
+
+	// Event loop
 	for {
 		select {
-		case msg, ok := <-ch:
+		case <-ctx.Done():
+			return
+		case msg, ok := <-messageChan:
 			if !ok {
-				// Channel closed, exit
-				return
-			}
-			err := enc.Encode(msg)
-			if err != nil {
-				a.serverError(w, err, fmt.Errorf("failed to encode message: %w", err))
-				return
-			}
-			err = rc.Flush()
-			if err != nil {
-				a.serverError(w, err, fmt.Errorf("failed to flush response: %w", err))
 				return
 			}
 
-		case <-r.Context().Done():
-			return
+			jsonData, err := json.Marshal(msg)
+			if err != nil {
+				a.logger.Error("failed to serialize message", "error", err)
+				continue
+			}
+
+			_, err = fmt.Fprintf(w, "data: %s\n\n", string(jsonData))
+			if err != nil {
+				a.logger.Error("failed to write event into SSE connection")
+			}
+			if err = rc.Flush(); err != nil {
+				a.logger.Error("failed to flush event message into client", "err", err)
+			}
 		}
 	}
 }

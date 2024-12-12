@@ -10,6 +10,8 @@ func (a *App) setupRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /generate", a.HandleGenerate)
+	mux.HandleFunc("GET /events", a.sseHandler)
+
 	return mux
 
 }

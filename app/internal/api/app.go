@@ -19,7 +19,7 @@ type App struct {
 	router       http.Handler
 	manimService *genmanim.LLMManimService
 	sm           *scs.SessionManager
-	connMgr      *events.ConnectionManager
+	msgRouter    *events.MessageRouter
 	queueMgr     *queue.QueueManager
 }
 
@@ -29,8 +29,8 @@ func New(cfg *config.Config, logger *slog.Logger, manimService *genmanim.LLMMani
 		logger:       logger,
 		manimService: manimService,
 		sm:           session.New(),
-		connMgr:      events.NewConnectionManager(),
-		queueMgr:     queue.New(sqsClient, cfg.TaskQueueURL),
+		msgRouter:    events.NewMessageRouter(),
+		queueMgr:     queue.New(sqsClient, cfg.TaskQueueURL, cfg.ResultQueueURL),
 	}
 
 	h := app.setupRoutes()

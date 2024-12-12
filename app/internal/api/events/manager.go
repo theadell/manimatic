@@ -27,47 +27,51 @@ type Message struct {
 	Details   map[string]any `json:"details,omitempty"`
 }
 
-type ConnectionManager struct {
-	mu          sync.Mutex
-	connections map[string]chan Message
+// MessageRouter handles routing messages to specific SSE clients
+type MessageRouter struct {
+	mu      sync.RWMutex
+	clients map[string]chan Message
 }
 
-func NewConnectionManager() *ConnectionManager {
-	return &ConnectionManager{
-		connections: make(map[string]chan Message),
+// NewMessageRouter creates a new message router
+func NewMessageRouter() *MessageRouter {
+	return &MessageRouter{
+		clients: make(map[string]chan Message),
 	}
 }
 
-func (cm *ConnectionManager) AddConnection(id string) chan Message {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
+// AddClient registers a new client for a specific session
+func (mr *MessageRouter) AddClient(sessionID string) (<-chan Message, func()) {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
 
-	ch := make(chan Message)
-	cm.connections[id] = ch
-	return ch
-}
+	messageChan := make(chan Message, 10)
+	mr.clients[sessionID] = messageChan
 
-func (cm *ConnectionManager) RemoveConnection(id string) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	if ch, ok := cm.connections[id]; ok {
-		close(ch)
-		delete(cm.connections, id)
+	fmt.Println("added client for session ", sessionID)
+	return messageChan, func() {
+		mr.mu.Lock()
+		defer mr.mu.Unlock()
+		fmt.Println("delete client for session", sessionID)
+		close(messageChan)
+		delete(mr.clients, sessionID)
 	}
 }
 
-func (cm *ConnectionManager) SendMessage(id string, message Message) error {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
+// SendMessage sends a message to a specific session
+func (mr *MessageRouter) SendMessage(msg Message) error {
+	mr.mu.RLock()
+	defer mr.mu.RUnlock()
 
-	if ch, ok := cm.connections[id]; ok {
-		select {
-		case ch <- message:
-			return nil
-		default:
-			return fmt.Errorf("connection %s is unresponsive", id)
-		}
+	clientChan, exists := mr.clients[msg.SessionId]
+	if !exists {
+		return fmt.Errorf("no active client for session %s", msg.SessionId)
 	}
-	return fmt.Errorf("connection %s not found", id)
+
+	select {
+	case clientChan <- msg:
+		return nil
+	default:
+		return fmt.Errorf("message channel full for session %s", msg.SessionId)
+	}
 }
