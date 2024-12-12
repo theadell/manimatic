@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
   Box, 
   Container, 
@@ -12,7 +12,8 @@ import {
   ThemeProvider, 
   CssBaseline,
   Paper,
-  CircularProgress
+  CircularProgress,
+  Skeleton
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -51,6 +52,10 @@ const theme = createTheme({
           '& .MuiOutlinedInput-root': {
             borderRadius: 16,
             backgroundColor: 'rgba(255,255,255,0.05)',
+            transition: 'background-color 0.2s ease',
+            '&.Mui-focused': {
+              backgroundColor: 'transparent'
+            }
           }
         }
       }
@@ -64,6 +69,15 @@ function AnimationGenerator() {
   const [videoUrl, setVideoUrl] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetGeneration = useCallback(() => {
+    if (generationTimeoutRef.current) {
+      clearTimeout(generationTimeoutRef.current);
+    }
+    setIsGenerating(false);
+    setError('Generation timed out. Please try again.');
+  }, []);
 
   const handleGenerate = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -77,6 +91,9 @@ function AnimationGenerator() {
     setScript('');
     setVideoUrl('');
     setError(null);
+
+    // Set a 5-second timeout
+    generationTimeoutRef.current = setTimeout(resetGeneration, 5000);
 
     try {
       const response = await fetch('/api/generate', {
@@ -93,12 +110,16 @@ function AnimationGenerator() {
       setError('Failed to generate animation. Please try again.');
       setIsGenerating(false);
     }
-  }, [prompt]);
+  }, [prompt, resetGeneration]);
 
   const handleCopyScript = useCallback(() => {
     if (script) {
       navigator.clipboard.writeText(script)
-        .then(() => setError('Script copied to clipboard'))
+        .then(() => {
+          setError('Script copied to clipboard');
+          // Optional: Add a brief visual feedback
+          setTimeout(() => setError(null), 2000);
+        })
         .catch(() => setError('Failed to copy script'));
     }
   }, [script]);
@@ -108,6 +129,12 @@ function AnimationGenerator() {
 
     eventSource.onmessage = (event) => {
       const message: MessageType = JSON.parse(event.data);
+      
+      // Clear timeout when we start receiving results
+      if (generationTimeoutRef.current) {
+        clearTimeout(generationTimeoutRef.current);
+      }
+
       switch (message.type) {
         case 'script':
           setScript(message.content);
@@ -127,9 +154,81 @@ function AnimationGenerator() {
     };
 
     return () => {
+      if (generationTimeoutRef.current) {
+        clearTimeout(generationTimeoutRef.current);
+      }
       eventSource.close();
     };
   }, []);
+
+  // Skeleton Loader Component
+  const SkeletonLoader = () => (
+    <Grid container spacing={3}>
+      <Grid item xs={12} md={6}>
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            p: 2, 
+            borderRadius: 2, 
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+          <Typography 
+            variant="h6" 
+            color="primary" 
+            sx={{ mb: 2 }}
+          >
+            Generated Animation
+          </Typography>
+          <Skeleton 
+            variant="rectangular" 
+            width="100%" 
+            height={300} 
+            sx={{ borderRadius: 2 }} 
+          />
+        </Paper>
+      </Grid>
+      <Grid item xs={12} md={6}>
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            p: 2, 
+            borderRadius: 2, 
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+          <Typography 
+            variant="h6" 
+            color="primary" 
+            sx={{ mb: 2 }}
+          >
+            Animation Script
+          </Typography>
+          <Box 
+            sx={{ 
+              flexGrow: 1, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: 1 
+            }}
+          >
+            {[...Array(5)].map((_, index) => (
+              <Skeleton 
+                key={index} 
+                variant="text" 
+                width="100%" 
+                height={40} 
+              />
+            ))}
+          </Box>
+        </Paper>
+      </Grid>
+    </Grid>
+  );
 
   return (
     <ThemeProvider theme={theme}>
@@ -139,7 +238,7 @@ function AnimationGenerator() {
         sx={{ 
           display: 'flex', 
           flexDirection: 'column', 
-          height: '100vh', 
+          minHeight: '100vh', 
           py: 4 
         }}
       >
@@ -162,16 +261,18 @@ function AnimationGenerator() {
           }}
         >
           {/* Results Grid */}
-          <Grid 
-            container 
-            spacing={3} 
-            sx={{ 
-              flexGrow: 1, 
-              mb: 2, 
-              overflowY: 'auto' 
-            }}
-          >
-            {/* Video Column */}
+          {isGenerating ? (
+            <SkeletonLoader />
+          ) : (
+            <Grid 
+              container 
+              spacing={3} 
+              sx={{ 
+                flexGrow: 1, 
+                mb: 2, 
+                overflowY: 'auto' 
+              }}
+            >
             <Grid item xs={12} md={6}>
               <AnimatePresence>
                 {videoUrl && (
@@ -277,12 +378,6 @@ function AnimationGenerator() {
               </AnimatePresence>
             </Grid>
           </Grid>
-
-          {/* Loading Indicator */}
-          {isGenerating && (
-            <Box display="flex" justifyContent="center" width="100%" sx={{ mb: 2 }}>
-              <CircularProgress color="primary" />
-            </Box>
           )}
         </Box>
 
@@ -318,7 +413,7 @@ function AnimationGenerator() {
 
         <Snackbar
           open={!!error}
-          autoHideDuration={6000}
+          autoHideDuration={3000}
           onClose={() => setError(null)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
