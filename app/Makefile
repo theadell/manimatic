@@ -11,7 +11,7 @@ ENV_FILE := .env
 
 # Start LocalStack in background
 localstack-start:
-	LOCALSTACK_HOST=localhost SERVICES=s3,sqs localstack start -d
+	LOCALSTACK_HOST=localhost SERVICES=s3,sqs,ssm localstack start -d
 
 # Stop LocalStack background process
 localstack-stop:
