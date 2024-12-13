@@ -1,31 +1,27 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { 
-  Box, 
-  Container, 
-  Typography, 
-  TextField, 
-  IconButton, 
-  Grid, 
-  Snackbar, 
+import {
+  Box,
+  Container,
+  Typography,
+  TextField,
+  IconButton,
+  Grid,
+  Snackbar,
   Alert,
-  createTheme, 
-  ThemeProvider, 
+  createTheme,
+  ThemeProvider,
   CssBaseline,
   Paper,
   CircularProgress,
-  Skeleton
+  Skeleton,
+  Button,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import DownloadIcon from '@mui/icons-material/Download';
 import { motion, AnimatePresence } from 'framer-motion';
-
-interface MessageType {
-  type: 'script' | 'video';
-  sessionId: string;
-  status: 'success' | 'error';
-  content: string;
-  details?: Record<string, any>;
-}
+import Editor from '@monaco-editor/react';
 
 const theme = createTheme({
   palette: {
@@ -35,27 +31,40 @@ const theme = createTheme({
       paper: '#1e1e1e'
     },
     primary: {
-      main: '#3fdaae'
+      main: '#4a90e2',
+      light: '#6ab0ff',
+      dark: '#3a80d2'
+    },
+    text: {
+      primary: '#e0e0e0',
+      secondary: '#b0b0b0'
     }
   },
   typography: {
-    fontFamily: 'Inter, sans-serif',
+    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     h1: {
       fontSize: '2.5rem',
-      fontWeight: 700
+      fontWeight: 600,
+      letterSpacing: '-0.02em'
     }
   },
   components: {
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8, // Reduced roundness
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          transition: 'box-shadow 0.3s ease'
+        }
+      }
+    },
     MuiTextField: {
       styleOverrides: {
         root: {
           '& .MuiOutlinedInput-root': {
-            borderRadius: 16,
+            borderRadius: 6, // Slightly reduced roundness
             backgroundColor: 'rgba(255,255,255,0.05)',
-            transition: 'background-color 0.2s ease',
-            '&.Mui-focused': {
-              backgroundColor: 'transparent'
-            }
+            transition: 'background-color 0.2s ease'
           }
         }
       }
@@ -63,13 +72,27 @@ const theme = createTheme({
   }
 });
 
+
+interface MessageType {
+  type: 'script' | 'video' | 'compiled';
+  sessionId: string;
+  status: 'success' | 'error';
+  content: string;
+  details?: Record<string, unknown>;
+}
+
 function AnimationGenerator() {
+  // State Management
   const [prompt, setPrompt] = useState('');
   const [script, setScript] = useState('');
+  const [editedScript, setEditedScript] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [compiledResult, setCompiledResult] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const generationTimeoutRef = useRef<number | null>(null);
+  const editorRef = useRef<unknown>(null);
 
   const resetGeneration = useCallback(() => {
     if (generationTimeoutRef.current) {
@@ -78,6 +101,10 @@ function AnimationGenerator() {
     setIsGenerating(false);
     setError('Generation timed out. Please try again.');
   }, []);
+
+  const handleEditorDidMount = (editor: unknown) => {
+    editorRef.current = editor;
+  };
 
   const handleGenerate = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -89,10 +116,11 @@ function AnimationGenerator() {
 
     setIsGenerating(true);
     setScript('');
+    setEditedScript('');
     setVideoUrl('');
+    setCompiledResult('');
     setError(null);
 
-    // Set a 5-second timeout
     generationTimeoutRef.current = setTimeout(resetGeneration, 5000);
 
     try {
@@ -112,24 +140,61 @@ function AnimationGenerator() {
     }
   }, [prompt, resetGeneration]);
 
+  // Compile Script Handler
+  const handleCompileScript = useCallback(async () => {
+    setIsCompiling(true);
+    setCompiledResult('');
+    setError(null);
+
+    try {
+      const response = await fetch('/api/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: editedScript })
+      });
+
+      if (!response.ok) {
+        throw new Error('Compilation failed');
+      }
+    } catch (error) {
+      console.error('Error compiling script:', error);
+      setError('Failed to compile script. Please check your code.');
+      setIsCompiling(false);
+    }
+  }, [editedScript]);
+
+  // Script Copy Handler
   const handleCopyScript = useCallback(() => {
-    if (script) {
-      navigator.clipboard.writeText(script)
+    const scriptToCopy = editedScript || script;
+    if (scriptToCopy) {
+      navigator.clipboard.writeText(scriptToCopy)
         .then(() => {
           setError('Script copied to clipboard');
-          // Optional: Add a brief visual feedback
           setTimeout(() => setError(null), 2000);
         })
         .catch(() => setError('Failed to copy script'));
     }
-  }, [script]);
+  }, [script, editedScript]);
 
+  // Video Download Handler
+  const handleDownloadVideo = useCallback(() => {
+    if (videoUrl) {
+      const link = document.createElement('a');
+      link.href = videoUrl;
+      link.download = 'animation.mp4';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }, [videoUrl]);
+
+  // Server-Sent Events Effect
   useEffect(() => {
     const eventSource = new EventSource('/api/events');
 
     eventSource.onmessage = (event) => {
       const message: MessageType = JSON.parse(event.data);
-      
+
       // Clear timeout when we start receiving results
       if (generationTimeoutRef.current) {
         clearTimeout(generationTimeoutRef.current);
@@ -137,11 +202,26 @@ function AnimationGenerator() {
 
       switch (message.type) {
         case 'script':
-          setScript(message.content);
-          break;
+          {
+            const receivedScript = message.content;
+            setScript(receivedScript);
+            setEditedScript(receivedScript);
+            setPrompt('')
+
+            if (editorRef.current) {
+              editorRef.current.setValue(receivedScript);
+            }
+
+            setIsGenerating(false);
+            break;
+          }
         case 'video':
           setVideoUrl(message.content);
           setIsGenerating(false);
+          break;
+        case 'compiled':
+          setCompiledResult(message.content);
+          setIsCompiling(false);
           break;
       }
     };
@@ -150,6 +230,7 @@ function AnimationGenerator() {
       console.error('EventSource failed:', error);
       eventSource.close();
       setIsGenerating(false);
+      setIsCompiling(false);
       setError('Connection error. Please refresh and try again.');
     };
 
@@ -161,233 +242,270 @@ function AnimationGenerator() {
     };
   }, []);
 
-  // Skeleton Loader Component
   const SkeletonLoader = () => (
     <Grid container spacing={3}>
-      <Grid item xs={12} md={6}>
-        <Paper 
-          elevation={3} 
-          sx={{ 
-            p: 2, 
-            borderRadius: 2, 
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          <Typography 
-            variant="h6" 
-            color="primary" 
-            sx={{ mb: 2 }}
-          >
-            Generated Animation
-          </Typography>
-          <Skeleton 
-            variant="rectangular" 
-            width="100%" 
-            height={300} 
-            sx={{ borderRadius: 2 }} 
-          />
-        </Paper>
-      </Grid>
-      <Grid item xs={12} md={6}>
-        <Paper 
-          elevation={3} 
-          sx={{ 
-            p: 2, 
-            borderRadius: 2, 
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          <Typography 
-            variant="h6" 
-            color="primary" 
-            sx={{ mb: 2 }}
-          >
-            Animation Script
-          </Typography>
-          <Box 
-            sx={{ 
-              flexGrow: 1, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: 1 
+      {[0, 1].map((item) => (
+        <Grid item xs={12} md={6} key={item}>
+          <Paper
+            elevation={1}
+            sx={{
+              p: 2,
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column'
             }}
           >
-            {[...Array(5)].map((_, index) => (
-              <Skeleton 
-                key={index} 
-                variant="text" 
-                width="100%" 
-                height={40} 
+            <Typography
+              variant="h6"
+              color="primary"
+              sx={{ mb: 2 }}
+            >
+              {item === 0 ? 'Generated Animation' : 'Animation Script'}
+            </Typography>
+            {item === 0 ? (
+              <Skeleton
+                variant="rectangular"
+                width="100%"
+                height={300}
               />
-            ))}
-          </Box>
-        </Paper>
-      </Grid>
+            ) : (
+              <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {[...Array(5)].map((_, index) => (
+                  <Skeleton
+                    key={index}
+                    variant="text"
+                    width="100%"
+                    height={40}
+                  />
+                ))}
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+      ))}
     </Grid>
   );
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Container 
-        maxWidth="lg" 
-        sx={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          minHeight: '100vh', 
-          py: 4 
+      <Container
+        maxWidth="lg"
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: '100vh',
+          py: 4
         }}
       >
-        <Typography 
-          variant="h1" 
-          align="center" 
+        <Typography
+          variant="h1"
+          align="center"
           color="primary"
           sx={{ mb: 4 }}
         >
           Manimatic
         </Typography>
 
-        {/* Content Area */}
-        <Box 
-          sx={{ 
-            flexGrow: 1, 
-            display: 'flex', 
-            flexDirection: 'column', 
-            overflow: 'hidden' 
+        <Box
+          sx={{
+            flexGrow: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
           }}
         >
-          {/* Results Grid */}
           {isGenerating ? (
             <SkeletonLoader />
           ) : (
-            <Grid 
-              container 
-              spacing={3} 
-              sx={{ 
-                flexGrow: 1, 
-                mb: 2, 
-                overflowY: 'auto' 
+            <Grid
+              container
+              spacing={3}
+              sx={{
+                flexGrow: 1,
+                mb: 2,
+                overflowY: 'auto'
               }}
             >
-            <Grid item xs={12} md={6}>
-              <AnimatePresence>
-                {videoUrl && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                  >
-                    <Paper 
-                      elevation={3} 
-                      sx={{ 
-                        p: 2, 
-                        borderRadius: 2, 
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}
+              {/* Video Column */}
+              <Grid item xs={12} md={6}>
+                <AnimatePresence>
+                  {videoUrl && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
                     >
-                      <Typography 
-                        variant="h6" 
-                        color="primary" 
-                        sx={{ mb: 2 }}
+                      <Paper
+                        elevation={1}
+                        sx={{
+                          p: 2,
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column'
+                        }}
                       >
-                        Generated Animation
-                      </Typography>
-                      <video 
-                        src={videoUrl} 
-                        controls 
-                        style={{ 
-                          width: '100%', 
-                          borderRadius: 16, 
-                          boxShadow: '0 10px 25px rgba(0,0,0,0.2)' 
-                        }} 
-                      />
-                    </Paper>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </Grid>
+                        <Box sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          mb: 2
+                        }}>
+                          <Typography
+                            variant="h6"
+                            color="primary"
+                          >
+                            Generated Animation
+                          </Typography>
+                          <IconButton
+                            color="primary"
+                            onClick={handleDownloadVideo}
+                            title="Download Video"
+                            size="small"
+                          >
+                            <DownloadIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                        <video
+                          src={videoUrl}
+                          controls
+                          style={{
+                            width: '100%',
+                            borderRadius: 6,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                          }}
+                        />
+                      </Paper>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Grid>
 
-            {/* Script Column */}
-            <Grid item xs={12} md={6}>
-              <AnimatePresence>
-                {script && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                  >
-                    <Paper 
-                      elevation={3} 
-                      sx={{ 
-                        p: 2, 
-                        borderRadius: 2, 
-                        height: '100%',
-                        position: 'relative',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}
+              {/* Script Column */}
+              <Grid item xs={12} md={6}>
+                <AnimatePresence>
+                  {script && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
                     >
-                      <Typography 
-                        variant="h6" 
-                        color="primary" 
-                        sx={{ mb: 2 }}
-                      >
-                        Animation Script
-                      </Typography>
-                      <IconButton
-                        color="primary"
-                        onClick={handleCopyScript}
-                        sx={{ 
-                          position: 'absolute', 
-                          top: 8, 
-                          right: 8 
+                      <Paper
+                        elevation={1}
+                        sx={{
+                          p: 2,
+                          height: '100%',
+                          position: 'relative',
+                          display: 'flex',
+                          flexDirection: 'column'
                         }}
                       >
-                        <ContentCopyIcon />
-                      </IconButton>
-                      <Box 
-                        sx={{ 
-                          flexGrow: 1, 
-                          overflowY: 'auto',
-                          backgroundColor: 'rgba(255,255,255,0.05)',
-                          borderRadius: 2,
-                          p: 2
-                        }}
-                      >
-                        <Typography 
-                          component="pre" 
-                          variant="body2"
-                          sx={{ 
-                            fontFamily: 'monospace', 
-                            whiteSpace: 'pre-wrap', 
-                            margin: 0
+                        <Box sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          mb: 2
+                        }}>
+                          <Typography
+                            variant="h6"
+                            color="primary"
+                          >
+                            Animation Script
+                          </Typography>
+                          <Box>
+                            <IconButton
+                              color="primary"
+                              onClick={handleCopyScript}
+                              title="Copy Script"
+                              size="small"
+                              sx={{ mr: 1 }}
+                            >
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              startIcon={<PlayArrowIcon />}
+                              size="small"
+                              disabled={isCompiling}
+                              onClick={handleCompileScript}
+                            >
+                              {isCompiling ? 'Compiling...' : 'Compile'}
+                            </Button>
+                          </Box>
+                        </Box>
+                        <Box
+                          sx={{
+                            flexGrow: 1,
+                            height: '100%', // Fixed height
+                            position: 'relative',
+                            borderRadius: 1,
+                            overflow: 'hidden',
+                            border: '1px solid rgba(255,255,255,0.1)'
                           }}
                         >
-                          {script}
-                        </Typography>
-                      </Box>
-                    </Paper>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                          <Editor
+                            height="600px"
+                            defaultLanguage="python"
+                            defaultValue={script}
+                            onMount={handleEditorDidMount}
+                            onChange={(value) => setEditedScript(value || '')}
+                            theme="vs-dark"
+                            options={{
+                              minimap: { enabled: false },
+                              fontSize: 14,
+                              lineHeight: 24,
+                              padding: { top: 15, bottom: 15 }
+                            }}
+                          />
+                        </Box>
+                        {compiledResult && (
+                          <Box
+                            sx={{
+                              mt: 2,
+                              p: 2,
+                              backgroundColor: 'rgba(255,255,255,0.05)',
+                              borderRadius: 1,
+                              maxHeight: 150,
+                              overflowY: 'auto'
+                            }}
+                          >
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                            >
+                              Compilation Result:
+                            </Typography>
+                            <Typography
+                              component="pre"
+                              variant="body2"
+                              sx={{
+                                fontFamily: 'monospace',
+                                whiteSpace: 'pre-wrap',
+                                margin: 0,
+                                color: 'text.secondary'
+                              }}
+                            >
+                              {compiledResult}
+                            </Typography>
+                          </Box>
+                        )}
+                      </Paper>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Grid>
             </Grid>
-          </Grid>
           )}
         </Box>
 
         {/* Prompt Input */}
-        <Box 
-          component="form" 
+        <Box
+          component="form"
           onSubmit={handleGenerate}
-          sx={{ 
-            mt: 2, 
-            width: '100%' 
+          sx={{
+            mt: 2,
+            width: '100%'
           }}
         >
           <TextField
@@ -399,12 +517,13 @@ function AnimationGenerator() {
             disabled={isGenerating}
             InputProps={{
               endAdornment: (
-                <IconButton 
-                  color="primary" 
+                <IconButton
+                  color="primary"
                   type="submit"
                   disabled={isGenerating}
+                  size="small"
                 >
-                  {isGenerating ? <CircularProgress size={24} /> : <SendIcon />}
+                  {isGenerating ? <CircularProgress size={24} /> : <SendIcon fontSize="small" />}
                 </IconButton>
               )
             }}
@@ -417,8 +536,8 @@ function AnimationGenerator() {
           onClose={() => setError(null)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
-          <Alert 
-            onClose={() => setError(null)} 
+          <Alert
+            onClose={() => setError(null)}
             severity={error?.includes('copied') ? 'success' : 'error'}
             sx={{ width: '100%' }}
           >
