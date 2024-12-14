@@ -1,0 +1,53 @@
+{
+    "ResourceRecordSets": [
+        {
+            "Name": "aws.adelhub.com.",
+            "Type": "NS",
+            "TTL": 172800,
+            "ResourceRecords": [
+                {
+                    "Value": "ns-1540.awsdns-00.co.uk."
+                },
+                {
+                    "Value": "ns-359.awsdns-44.com."
+                },
+                {
+                    "Value": "ns-1105.awsdns-10.org."
+                },
+                {
+                    "Value": "ns-631.awsdns-14.net."
+                }
+            ]
+        },
+        {
+            "Name": "aws.adelhub.com.",
+            "Type": "SOA",
+            "TTL": 900,
+            "ResourceRecords": [
+                {
+                    "Value": "ns-1540.awsdns-00.co.uk. awsdns-hostmaster.amazon.com. 1 7200 900 1209600 86400"
+                }
+            ]
+        },
+        {
+            "Name": "_384a907501030d07fe6bab9f130ebc04.manimatic.aws.adelhub.com.",
+            "Type": "CNAME",
+            "TTL": 300,
+            "ResourceRecords": [
+                {
+                    "Value": "_bea67a5dc7ce133173b9043c63ada867.zfyfvmchrl.acm-validations.aws."
+                }
+            ]
+        },
+        {
+            "Name": "test.aws.adelhub.com.",
+            "Type": "A",
+            "TTL": 300,
+            "ResourceRecords": [
+                {
+                    "Value": "192.0.2.225"
+                }
+            ]
+        }
+    ]
+}
