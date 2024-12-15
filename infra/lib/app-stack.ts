@@ -19,26 +19,35 @@ export class AppStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props: AppStackProps) {
         super(scope, id, props)
 
-        const securityGroup = new ec2.SecurityGroup(this, 'apiEC2InstanceSG', {
+        const sshKeyPair = ec2.KeyPair.fromKeyPairName(this, 'ec2-keyPair', 'dev-mini-01')
+
+        /* EC2 Instance for the API */
+
+        const apiEc2InstanceSG = new ec2.SecurityGroup(this, 'apiEC2InstanceSG', {
             vpc: props.vpc,
             allowAllOutbound: true,
         })
 
-        securityGroup.addIngressRule(
+        apiEc2InstanceSG.addIngressRule(
             ec2.Peer.anyIpv4(),
             ec2.Port.tcp(22),
             'Allow SSH Access',
         )
 
-        securityGroup.addIngressRule(
+        apiEc2InstanceSG.addIngressRule(
             ec2.Peer.anyIpv4(),
             ec2.Port.tcp(80),
             'Allow HTTP web traffic'
+        )
+
+        apiEc2InstanceSG.addIngressRule(
+            ec2.Peer.anyIpv4(),
+            ec2.Port.tcp(8080),
+            'Allow HTTP web traffic'
         );
 
-        const keyPair = ec2.KeyPair.fromKeyPairName(this, 'ec2-keyPair', 'dev-mini-01')
 
-        const apiInstance = new ec2.Instance(this, 'apiEC2Instance', {
+        const apiEC2Instance = new ec2.Instance(this, 'apiEC2Instance', {
             vpc: props.vpc,
             vpcSubnets: {
                 subnetType: ec2.SubnetType.PUBLIC
@@ -48,21 +57,22 @@ export class AppStack extends cdk.Stack {
                 ec2.InstanceSize.MICRO,
             ),
             machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-            securityGroup: securityGroup,
-            keyPair: keyPair
+            securityGroup: apiEc2InstanceSG,
+            keyPair: sshKeyPair
         })
 
-        const workerSecurityGroup = new ec2.SecurityGroup(this, 'workerEC2InstanceSG', {
+        /* EC2 Instance for the Worker */
+
+        const workerEC2InstanceSG = new ec2.SecurityGroup(this, 'workerEC2InstanceSG', {
             vpc: props.vpc,
             allowAllOutbound: true,
         })
 
-        workerSecurityGroup.addIngressRule(
+        workerEC2InstanceSG.addIngressRule(
             ec2.Peer.anyIpv4(),
             ec2.Port.tcp(22),
             'Allow SSH Access',
         )
-
 
         const workerInstance = new ec2.Instance(this, 'workerEC2Instance', {
             vpc: props.vpc,
@@ -74,14 +84,18 @@ export class AppStack extends cdk.Stack {
                 ec2.InstanceSize.MICRO,
             ),
             machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-            securityGroup: workerSecurityGroup,
-            keyPair: keyPair
+            securityGroup: workerEC2InstanceSG,
+            keyPair: sshKeyPair
         })
 
+        /* Queues */
+
+        // dead letter queue to failed tasks 
         const manimaticDLQ = new sqs.Queue(this, 'Queue-DLQ', {
             queueName: 'manimatic-DLQ',
         })
 
+        // Queue for the tasks 
         const taskQueue = new sqs.Queue(this, 'Queue-Tasks', {
             queueName: 'manimatic-tasks',
             deadLetterQueue: {
@@ -90,6 +104,7 @@ export class AppStack extends cdk.Stack {
             },
         })
 
+        // Queue for the results 
         const animationQueue = new sqs.Queue(this, 'Queue-Animations', {
             queueName: 'manimatic-animations',
             deadLetterQueue: {
@@ -98,12 +113,15 @@ export class AppStack extends cdk.Stack {
             },
         })
 
-        taskQueue.grantSendMessages(apiInstance)
+        //permissions
+        taskQueue.grantSendMessages(apiEC2Instance)
         taskQueue.grantConsumeMessages(workerInstance)
 
         animationQueue.grantSendMessages(workerInstance)
-        animationQueue.grantConsumeMessages(apiInstance)
+        animationQueue.grantConsumeMessages(apiEC2Instance)
 
+
+        /* ALB for the API with zone record and TLS */
 
         const zone = route53.HostedZone.fromLookup(this, 'devHostedZone', {
             domainName: 'dev.pluseinslab.com'
@@ -114,19 +132,17 @@ export class AppStack extends cdk.Stack {
             validation: acm.CertificateValidation.fromDns(zone),
         });
 
-        // ALB 
         const albSecurityGroup = new ec2.SecurityGroup(this, 'ALBSecurityGroup', {
             vpc: props.vpc,
             allowAllOutbound: true,
             description: 'Security group for Application Load Balancer'
         });
 
-        // Allow HTTP and HTTPS inbound traffic from anywhere
         albSecurityGroup.addIngressRule(
             ec2.Peer.anyIpv4(),
             ec2.Port.tcp(80),
             'Allow HTTP traffic'
-        );
+        )
         albSecurityGroup.addIngressRule(
             ec2.Peer.anyIpv4(),
             ec2.Port.tcp(443),
@@ -142,16 +158,16 @@ export class AppStack extends cdk.Stack {
 
         const targetGroup = new elbv2.ApplicationTargetGroup(this, 'APITargetGroup', {
             vpc: props.vpc,
-            port: 80,
+            port: 8080,
             targetType: elbv2.TargetType.INSTANCE,
             healthCheck: {
                 path: '/healthz',
-                healthyHttpCodes: '200',
+                healthyHttpCodes: '404',
             },
         })
 
         targetGroup.addTarget(
-            new elbv2_targets.InstanceTarget(apiInstance, 80)
+            new elbv2_targets.InstanceTarget(apiEC2Instance, 8080)
         )
 
         const httpsListener = alb.addListener('HTTPSListener', {
@@ -184,7 +200,7 @@ export class AppStack extends cdk.Stack {
 
 
         new cdk.CfnOutput(this, 'instancePublicIp', {
-            value: apiInstance.instancePublicIp
+            value: apiEC2Instance.instancePublicIp
         })
 
         new cdk.CfnOutput(this, 'Tasks Queue URL', {
@@ -194,7 +210,7 @@ export class AppStack extends cdk.Stack {
         new cdk.CfnOutput(this, 'Animations Queue URL', {
             value: animationQueue.queueUrl,
             description: 'The URL of the Animations SQS queue'
-        })
+        })    
 
     }
 
