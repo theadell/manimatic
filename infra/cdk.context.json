@@ -15,5 +15,13 @@
   "hosted-zone:account=034867674228:domainName=dev.pluseinslab.com:region=eu-central-1": {
     "Id": "/hostedzone/Z0451269TDR8XIDXZKFL",
     "Name": "dev.pluseinslab.com."
+  },
+  "hosted-zone:account=034867674228:domainName=aws.adelh.dev:region=eu-central-1": {
+    "Id": "/hostedzone/Z09075912P93BWIQRNNIJ",
+    "Name": "aws.adelh.dev."
+  },
+  "hosted-zone:account=034867674228:domainName=aws.adelh.dev:region=us-east-1": {
+    "Id": "/hostedzone/Z09075912P93BWIQRNNIJ",
+    "Name": "aws.adelh.dev."
   }
 }

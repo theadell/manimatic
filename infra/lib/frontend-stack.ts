@@ -11,19 +11,20 @@ import * as path from 'path';
 
 import { Construct } from 'constructs';
 
-interface InfraStackProps extends cdk.StackProps {
+interface FrontendStackProps extends cdk.StackProps {
   certificate: cm.Certificate;
 }
 
 
-export class InfraStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: InfraStackProps) {
+export class FrontendStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: FrontendStackProps) {
     super(scope, id, props);
 
-    const s3Bucket = new s3.Bucket(this, 'manimatic-websitesite-bucket', {
+    const s3Bucket = new s3.Bucket(this, 'manimatic-website-bucket', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true
+      autoDeleteObjects: true,
+      versioned: true,
     })
 
     const oac = new cloudfront.S3OriginAccessControl(this, 'oac', {
@@ -38,7 +39,7 @@ export class InfraStack extends cdk.Stack {
     }
     )
 
-    const siteDomainName = "manimatic.aws.adelhub.com"
+    const siteDomainName = "manimatic.aws.adelh.dev"
 
     const distribution = new cloudfront.Distribution(this, 'WebsiteDistribution', {
       defaultRootObject: 'index.html',
@@ -46,13 +47,14 @@ export class InfraStack extends cdk.Stack {
       certificate: props.certificate,
       defaultBehavior: {
         origin: s3Origin,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED
-      }
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      
     })
 
     const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
-      domainName: 'aws.adelhub.com',
+      domainName: 'aws.adelh.dev',
     });
 
     new route53.ARecord(this, 'SiteAliasRecord', {
@@ -79,7 +81,7 @@ export class InfraStack extends cdk.Stack {
       description: 'The URL of the deployed website',
     });    
     new cdk.CfnOutput(this, 'Custom-WebsiteURL', {
-      value: `https://manimatic.aws.adelhub.com`,
+      value: `https://${siteDomainName}`,
       description: 'The Custom URL of the deployed website',
     });
 
