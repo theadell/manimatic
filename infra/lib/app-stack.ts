@@ -1,6 +1,7 @@
 
 import * as cdk from "aws-cdk-lib"
 import * as ec2 from "aws-cdk-lib/aws-ec2"
+import * as s3 from "aws-cdk-lib/aws-s3"
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
@@ -201,8 +202,19 @@ export class AppStack extends cdk.Stack {
             zone: zone,
             recordName: 'api.manimatic.aws.adelh.dev',
             target: route53.RecordTarget.fromAlias(albR53Target)
-        });
+        })
 
+        // S3 bucket for video uploads
+        const resultsBucket = new s3.Bucket(this, 'manimaticVideosBucket', {
+            bucketName: 'manimatic-animations-store-bucket',
+            blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+            versioned: true
+        })
+
+        // grant access to the EC2 instances 
+        resultsBucket.grantRead(apiEC2Instance)
+        resultsBucket.grantReadWrite(workerInstance)
+        resultsBucket.grantDelete(workerInstance)
 
         new cdk.CfnOutput(this, 'instancePublicIp', {
             value: apiEC2Instance.instancePublicIp
