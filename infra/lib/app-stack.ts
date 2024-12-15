@@ -88,7 +88,12 @@ export class AppStack extends cdk.Stack {
             keyPair: sshKeyPair
         })
 
-        /* Queues */
+
+        // Ec2 Connect Endpoint
+        const endpoint = new ec2.CfnInstanceConnectEndpoint(this, 'worker-connect-endpoint', {
+            subnetId: workerInstance.instance.subnetId!,
+            securityGroupIds: [workerEC2InstanceSG.securityGroupId],
+        })
 
         // dead letter queue to failed tasks 
         const manimaticDLQ = new sqs.Queue(this, 'Queue-DLQ', {
@@ -124,11 +129,11 @@ export class AppStack extends cdk.Stack {
         /* ALB for the API with zone record and TLS */
 
         const zone = route53.HostedZone.fromLookup(this, 'devHostedZone', {
-            domainName: 'dev.pluseinslab.com'
+            domainName: 'aws.adelh.dev'
         })
 
         const certificate = new acm.Certificate(this, 'MyCertificate', {
-            domainName: 'api.manimatic.dev.pluseinslab.com',
+            domainName: 'api.manimatic.aws.adelh.dev',
             validation: acm.CertificateValidation.fromDns(zone),
         });
 
@@ -194,7 +199,7 @@ export class AppStack extends cdk.Stack {
 
         new route53.ARecord(this, 'APILoadBalancerDNSRecord', {
             zone: zone,
-            recordName: 'api.manimatic.dev.pluseinslab.com',
+            recordName: 'api.manimatic.aws.adelh.dev',
             target: route53.RecordTarget.fromAlias(albR53Target)
         });
 
@@ -210,7 +215,13 @@ export class AppStack extends cdk.Stack {
         new cdk.CfnOutput(this, 'Animations Queue URL', {
             value: animationQueue.queueUrl,
             description: 'The URL of the Animations SQS queue'
-        })    
+        })
+
+        new cdk.CfnOutput(this, 'EICEndpointId', {
+            value: endpoint.attrId,
+            description: 'The ID of the EC2 Instance Connect Endpoint',
+        });
+        
 
     }
 
