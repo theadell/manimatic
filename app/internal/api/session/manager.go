@@ -11,10 +11,10 @@ import (
 func New() *scs.SessionManager {
 	sessionManager := scs.New()
 	sessionManager.Lifetime = 24 * time.Hour
-	sessionManager.Cookie.Name = "MANIMATIC_S"
+	sessionManager.Cookie.Name = "MANIMATIC_SS"
 	sessionManager.Cookie.Persist = true
 	sessionManager.Store = memstore.New()
-	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.SameSite = http.SameSiteNoneMode
 	sessionManager.Cookie.Secure = true
 	return sessionManager
 }

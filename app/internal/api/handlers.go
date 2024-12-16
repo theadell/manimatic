@@ -123,3 +123,7 @@ func (a *App) sseHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
