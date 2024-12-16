@@ -5,27 +5,29 @@ import * as s3 from "aws-cdk-lib/aws-s3"
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
-import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
-import * as elbv2_targets from 'aws-cdk-lib/aws-elasticloadbalancingv2-targets';
+
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-
+import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2"
+import * as elbv2_targets from "aws-cdk-lib/aws-elasticloadbalancingv2-targets"
 import { Construct } from "constructs";
-
-interface AppStackProps extends cdk.StackProps {
-    vpc: ec2.Vpc
-}
 
 
 export class AppStack extends cdk.Stack {
-    constructor(scope: Construct, id: string, props: AppStackProps) {
+
+
+    constructor(scope: Construct, id: string, props: cdk.StackProps) {
         super(scope, id, props)
 
         const sshKeyPair = ec2.KeyPair.fromKeyPairName(this, 'ec2-keyPair', 'dev-mini-01')
 
-        /* EC2 Instance for the API */
+        const vpc = ec2.Vpc.fromLookup(this, 'Vpc', {
+            vpcId: 'vpc-08f7a183fccb3a9ee',
+        });
 
+
+        /* EC2 Instance for the API */
         const apiEc2InstanceSG = new ec2.SecurityGroup(this, 'apiEC2InstanceSG', {
-            vpc: props.vpc,
+            vpc: vpc,
             allowAllOutbound: true,
         })
 
@@ -49,7 +51,7 @@ export class AppStack extends cdk.Stack {
 
 
         const apiEC2Instance = new ec2.Instance(this, 'apiEC2Instance', {
-            vpc: props.vpc,
+            vpc: vpc,
             vpcSubnets: {
                 subnetType: ec2.SubnetType.PUBLIC
             },
@@ -65,7 +67,7 @@ export class AppStack extends cdk.Stack {
         /* EC2 Instance for the Worker */
 
         const workerEC2InstanceSG = new ec2.SecurityGroup(this, 'workerEC2InstanceSG', {
-            vpc: props.vpc,
+            vpc: vpc,
             allowAllOutbound: true,
         })
 
@@ -76,7 +78,7 @@ export class AppStack extends cdk.Stack {
         )
 
         const workerInstance = new ec2.Instance(this, 'workerEC2Instance', {
-            vpc: props.vpc,
+            vpc: vpc,
             vpcSubnets: {
                 subnetType: ec2.SubnetType.PRIVATE_ISOLATED
             },
@@ -84,14 +86,20 @@ export class AppStack extends cdk.Stack {
                 ec2.InstanceClass.T2,
                 ec2.InstanceSize.MICRO,
             ),
-            machineImage: ec2.MachineImage.latestAmazonLinux2023(),
+            machineImage: ec2.MachineImage.genericLinux({
+                'eu-central-1': 'ami-0745b7d4092315796',
+            }),
             securityGroup: workerEC2InstanceSG,
-            keyPair: sshKeyPair
+            keyPair: sshKeyPair,
+            blockDevices: [{
+                "deviceName": "/dev/xvda", 
+                volume: ec2.BlockDeviceVolume.ebs(30)
+            }]
         })
 
 
         // Ec2 Connect Endpoint
-        const endpoint = new ec2.CfnInstanceConnectEndpoint(this, 'worker-connect-endpoint', {
+        const ec2Interfaceendpoint = new ec2.CfnInstanceConnectEndpoint(this, 'worker-connect-endpoint', {
             subnetId: workerInstance.instance.subnetId!,
             securityGroupIds: [workerEC2InstanceSG.securityGroupId],
         })
@@ -139,7 +147,7 @@ export class AppStack extends cdk.Stack {
         });
 
         const albSecurityGroup = new ec2.SecurityGroup(this, 'ALBSecurityGroup', {
-            vpc: props.vpc,
+            vpc: vpc,
             allowAllOutbound: true,
             description: 'Security group for Application Load Balancer'
         });
@@ -156,19 +164,19 @@ export class AppStack extends cdk.Stack {
         )
 
         const alb = new elbv2.ApplicationLoadBalancer(this, 'APILoadBalancer', {
-            vpc: props.vpc,
+            vpc: vpc,
             internetFacing: true,
             securityGroup: albSecurityGroup
         })
 
 
         const targetGroup = new elbv2.ApplicationTargetGroup(this, 'APITargetGroup', {
-            vpc: props.vpc,
+            vpc: vpc,
             port: 8080,
             targetType: elbv2.TargetType.INSTANCE,
             healthCheck: {
                 path: '/healthz',
-                healthyHttpCodes: '404',
+                healthyHttpCodes: '200',
             },
         })
 
@@ -230,10 +238,10 @@ export class AppStack extends cdk.Stack {
         })
 
         new cdk.CfnOutput(this, 'EICEndpointId', {
-            value: endpoint.attrId,
+            value: ec2Interfaceendpoint.attrId,
             description: 'The ID of the EC2 Instance Connect Endpoint',
-        });
-        
+        })
+
 
     }
 
