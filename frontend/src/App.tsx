@@ -22,6 +22,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DownloadIcon from '@mui/icons-material/Download';
 import { motion, AnimatePresence } from 'framer-motion';
 import Editor from '@monaco-editor/react';
+import * as monaco from 'monaco-editor';
 
 const theme = createTheme({
   palette: {
@@ -81,6 +82,7 @@ interface MessageType {
   details?: Record<string, unknown>;
 }
 
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 function AnimationGenerator() {
   // State Management
   const [prompt, setPrompt] = useState('');
@@ -92,7 +94,7 @@ function AnimationGenerator() {
   const [isCompiling, setIsCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const generationTimeoutRef = useRef<number | null>(null);
-  const editorRef = useRef<unknown>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const resetGeneration = useCallback(() => {
     if (generationTimeoutRef.current) {
@@ -102,7 +104,7 @@ function AnimationGenerator() {
     setError('Generation timed out. Please try again.');
   }, []);
 
-  const handleEditorDidMount = (editor: unknown) => {
+  const handleEditorDidMount = (editor: monaco.editor.IStandaloneCodeEditor) => {
     editorRef.current = editor;
   };
 
@@ -124,10 +126,11 @@ function AnimationGenerator() {
     generationTimeoutRef.current = setTimeout(resetGeneration, 5000);
 
     try {
-      const response = await fetch('/api/generate', {
+      const response = await fetch(`${apiBaseUrl}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt }),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -147,10 +150,11 @@ function AnimationGenerator() {
     setError(null);
 
     try {
-      const response = await fetch('/api/compile', {
+      const response = await fetch(`${apiBaseUrl}/compile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: editedScript })
+        body: JSON.stringify({ script: editedScript }),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -190,56 +194,76 @@ function AnimationGenerator() {
 
   // Server-Sent Events Effect
   useEffect(() => {
-    const eventSource = new EventSource('/api/events');
+    const initializeEventSource = async () => {
+      try {
 
-    eventSource.onmessage = (event) => {
-      const message: MessageType = JSON.parse(event.data);
+        const healthzResponse = await fetch(`${apiBaseUrl}/healthz`, {
+          method: 'GET',
+          credentials: 'include', 
+        });
 
-      // Clear timeout when we start receiving results
-      if (generationTimeoutRef.current) {
-        clearTimeout(generationTimeoutRef.current);
-      }
+        if (!healthzResponse.ok) {
+          throw new Error(`Health check failed with status: ${healthzResponse.status}`);
+        }
 
-      switch (message.type) {
-        case 'script':
-          {
-            const receivedScript = message.content;
-            setScript(receivedScript);
-            setEditedScript(receivedScript);
-            setPrompt('')
+        const eventSource = new EventSource(`${apiBaseUrl}/events`, { withCredentials: true });
 
-            if (editorRef.current) {
-              editorRef.current.setValue(receivedScript);
-            }
+        eventSource.onmessage = (event) => {
+          const message: MessageType = JSON.parse(event.data);
 
-            setIsGenerating(false);
-            break;
+          if (generationTimeoutRef.current) {
+            clearTimeout(generationTimeoutRef.current);
           }
-        case 'video':
-          setVideoUrl(message.content);
+
+          switch (message.type) {
+            case 'script':
+              {
+                const receivedScript = message.content;
+                setScript(receivedScript);
+                setEditedScript(receivedScript);
+                setPrompt('');
+
+                if (editorRef.current) {
+                  editorRef.current.setValue(receivedScript);
+                }
+
+                setIsGenerating(false);
+                break;
+              }
+            case 'video':
+              setVideoUrl(message.content);
+              setIsGenerating(false);
+              break;
+            case 'compiled':
+              setCompiledResult(message.content);
+              setIsCompiling(false);
+              break;
+          }
+        };
+
+        eventSource.onerror = (error) => {
+          console.error('EventSource failed:', error);
+          eventSource.close();
           setIsGenerating(false);
-          break;
-        case 'compiled':
-          setCompiledResult(message.content);
           setIsCompiling(false);
-          break;
+          setError('Connection error. Please refresh and try again.');
+        };
+
+        return () => {
+          if (generationTimeoutRef.current) {
+            clearTimeout(generationTimeoutRef.current);
+          }
+          eventSource.close();
+        };
+      } catch (error) {
+        console.error('Initialization failed:', error);
+        setError('Health check failed. Unable to connect to the server.');
+        setIsGenerating(false);
+        setIsCompiling(false);
       }
     };
 
-    eventSource.onerror = (error) => {
-      console.error('EventSource failed:', error);
-      eventSource.close();
-      setIsGenerating(false);
-      setIsCompiling(false);
-      setError('Connection error. Please refresh and try again.');
-    };
-
-    return () => {
-      if (generationTimeoutRef.current) {
-        clearTimeout(generationTimeoutRef.current);
-      }
-      eventSource.close();
-    };
+    initializeEventSource()
   }, []);
 
   const SkeletonLoader = () => (
