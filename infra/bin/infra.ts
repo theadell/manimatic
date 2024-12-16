@@ -11,8 +11,7 @@ const vpcStack = new VpcStack(app, 'VpcStack', {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
 })
 
-new AppStack(app, 'AppStack', {
-  vpc: vpcStack.vpc,
+const appStack = new AppStack(app, 'AppStack', {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
 })
 
