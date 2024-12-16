@@ -34,46 +34,19 @@ export class VpcStack extends cdk.Stack {
 
         })
 
-        const sqsEndpointsSG = new ec2.SecurityGroup(this, 'sqsEndpointSG', {
-            vpc: this.vpc,
-            description: 'Security group for SQS VPC Endpoint',
-            allowAllOutbound: true,
+
+        this.vpc.addGatewayEndpoint('S3Endpoint', {
+            service: ec2.GatewayVpcEndpointAwsService.S3,
+            subnets: [
+                { subnetType: ec2.SubnetType.PRIVATE_ISOLATED }
+            ]
         })
 
-        // Workaround to avoid cyclic depdency with the AppStack
-        sqsEndpointsSG.addIngressRule(ec2.Peer.ipv4(this.vpc.vpcCidrBlock), ec2.Port.tcp(443), 'Allow VPC CIDR to access SQS endpoint');
+        new cdk.CfnOutput(this, 'VpcId', {
+            value: this.vpc.vpcId,
+            description: 'The ID of the VPC',
+        });
 
-
-        const sqsEndpoint = this.vpc.addInterfaceEndpoint('SQSVpcEndpoint', {
-            service: ec2.InterfaceVpcEndpointAwsService.SQS,
-            securityGroups: [sqsEndpointsSG]
-        })
-
-
-        this.vpc.publicSubnets.forEach((subnet, index) => {
-            new cdk.CfnOutput(this, `PublicSubnet${index}`, {
-                value: `Subnet ID: ${subnet.subnetId}, CIDR Block: ${subnet.ipv4CidrBlock || 'No CIDR Block'}`,
-                description: `Public Subnet ${index}`,
-            })
-        })
-
-        this.vpc.isolatedSubnets.forEach((subnet, index) => {
-            new cdk.CfnOutput(this, `IsolatedSubnet${index}`, {
-                value: `Subnet ID: ${subnet.subnetId}, CIDR Block: ${subnet.ipv4CidrBlock || 'No CIDR Block'}`,
-                description: `Isolated Subnet ${index}`,
-            })
-        })
-
-        this.vpc.privateSubnets.forEach((subnet, index) => {
-            new cdk.CfnOutput(this, `PrivateSubnet${index}`, {
-                value: `Subnet ID: ${subnet.subnetId}, CIDR Block: ${subnet.ipv4CidrBlock || 'No CIDR Block'}`,
-                description: `Private Subnet ${index}`,
-            })
-        })
-
-        new cdk.CfnOutput(this, 'SqsVpcEndpointId', {
-            value: sqsEndpoint.vpcEndpointId,
-          })
 
     }
 }
