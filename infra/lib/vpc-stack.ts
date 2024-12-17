@@ -12,6 +12,7 @@ export class VpcStack extends cdk.Stack {
             ipAddresses: ec2.IpAddresses.cidr('10.16.0.0/16'),
             maxAzs: 3,
             reservedAzs: 1,
+            natGateways: 1,
             subnetConfiguration: [
                 {
                     subnetType: ec2.SubnetType.PUBLIC,
@@ -19,7 +20,7 @@ export class VpcStack extends cdk.Stack {
                 },
                 {
                     // TODO: Use fck-nat 
-                    subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+                    subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
                     name: 'Worker',
                 },
                 {
@@ -34,13 +35,13 @@ export class VpcStack extends cdk.Stack {
 
         })
 
-
         this.vpc.addGatewayEndpoint('S3Endpoint', {
             service: ec2.GatewayVpcEndpointAwsService.S3,
             subnets: [
                 { subnetType: ec2.SubnetType.PRIVATE_ISOLATED }
             ]
-        })
+        })     
+
 
         new cdk.CfnOutput(this, 'VpcId', {
             value: this.vpc.vpcId,
