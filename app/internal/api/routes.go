@@ -26,8 +26,8 @@ func (a *App) setupRoutes() http.Handler {
 }
 
 func (a *App) setupMiddleware(h http.Handler) http.Handler {
-	recovery := middleware.RecoveryMiddleware(a.logger)
-
+	recovery := middleware.PanicRecovery(a.logger)
+	requestLogger := middleware.HTTPLogger(a.logger)
 	c := cors.New(cors.Options{
 		AllowOriginFunc: func(origin string) bool {
 
@@ -42,6 +42,6 @@ func (a *App) setupMiddleware(h http.Handler) http.Handler {
 	})
 
 	handler := c.Handler(h)
-	return middleware.Chain(handler, recovery, a.sm.LoadAndSave, middleware.EnsureSessionTokenMiddleware(a.sm, a.logger))
+	return middleware.Chain(handler, recovery, middleware.RealIP, requestLogger, a.sm.LoadAndSave, middleware.EnsureSessionTokenMiddleware(a.sm, a.logger))
 
 }
