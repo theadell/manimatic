@@ -19,7 +19,7 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 	var req GenerateRequest
 
 	err := ReadJSON(w, r, &req)
-	if err != nil || req.Prompt == "" {
+	if err != nil || len(req.Prompt) < 8 {
 		a.badRequestResponse(w, "invalid request body")
 	}
 
@@ -45,6 +45,22 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 					"message": "Failed to generate script",
 					"details": map[string]any{
 						"reason": err.Error(),
+					},
+				},
+			}
+			_ = a.MsgRouter.SendMessage(msg)
+			return
+		}
+		if !result.ValidInput || result.Code == "" {
+			a.logger.Info("generated script flagged as invalid or empty", "prompt", req.Prompt)
+			msg = events.Message{
+				Type:      events.MessageTypeScriptUpdate,
+				Status:    events.MessageStatusError,
+				SessionId: sessionID,
+				Content: map[string]any{
+					"message": "failed to generate scene for the given prompt",
+					"details": map[string]any{
+						"reason": result.Warnings,
 					},
 				},
 			}
