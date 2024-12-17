@@ -13,6 +13,7 @@ type Config struct {
 	TaskQueueURL    string
 	ResultQueueURL  string
 	UseLocalStack   bool
+	LocalstackHost  string
 	Host            string
 	Port            int
 	LogLevel        slog.Level
@@ -24,9 +25,10 @@ type Config struct {
 func LoadConfig() *Config {
 	config := &Config{}
 
-	config.Host = getEnvString("HOST", "localhost")
+	config.Host = getEnvString("HOST", "0.0.0.0")
 	config.Port = getEnvInt("PORT", 8080)
-	config.UseLocalStack = getEnvBool("USE_LOCAL_STACK")
+	config.UseLocalStack = getEnvBool("LOCALSTACK")
+	config.LocalstackHost = getEnvString("LOCALSTACK_HOST", "http://localhost:4566")
 	config.OpenAIKey = getEnvString("OPENAI_API_KEY", "")
 	config.TaskQueueURL = getEnvString("TASK_QUEUE_URL", "http://sqs.eu-central-1.localhost:4566/000000000000/manim-task-queue")
 	config.ResultQueueURL = getEnvString("RESULT_QUEUE_URL", "http://sqs.eu-central-1.localhost:4566/000000000000/manim-result-queue")
@@ -42,6 +44,7 @@ func LoadConfig() *Config {
 	flag.StringVar(&config.Host, "host", config.Host, "Server host")
 	flag.IntVar(&config.Port, "port", config.Port, "Server port")
 	flag.BoolVar(&config.UseLocalStack, "localstack", config.UseLocalStack, "Use localstack")
+	flag.StringVar(&config.LocalstackHost, "localstack-host", config.LocalstackHost, "Localstack Host")
 	flag.StringVar(&config.OpenAIKey, "openai-api-key", config.OpenAIKey, "OpenAI API key")
 	flag.StringVar(&config.TaskQueueURL, "task-queue-url", config.TaskQueueURL, "Task Queue URL")
 	flag.StringVar(&config.ResultQueueURL, "result-queue-url", config.ResultQueueURL, "Result Queue URL")

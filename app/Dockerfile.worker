@@ -1,0 +1,19 @@
+FROM golang:1.23 AS build-stage
+
+WORKDIR /worker 
+
+COPY go.mod go.sum ./
+RUN go mod download 
+
+COPY . ./
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app ./cmd/worker/main.go
+
+
+FROM manimcommunity/manim:v0.18.1
+
+COPY --from=build-stage /app /usr/local/bin/app
+
+WORKDIR /manim
+
+CMD ["/usr/local/bin/app"]

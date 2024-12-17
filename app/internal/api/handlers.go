@@ -120,6 +120,7 @@ func (a *App) sseHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		case msg, ok := <-messageChan:
 			if !ok {
+				a.logger.Debug("Client Event channel Closed")
 				return
 			}
 
@@ -135,6 +136,7 @@ func (a *App) sseHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			if err = rc.Flush(); err != nil {
 				a.logger.Error("failed to flush event message into client", "err", err)
+				return
 			}
 		}
 	}

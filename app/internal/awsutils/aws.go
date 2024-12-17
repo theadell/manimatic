@@ -12,15 +12,14 @@ import (
 )
 
 const (
-	localStackEndpoint = "http://localhost:4566"
-	localStackRegion   = "eu-central-1"
+	localStackRegion = "eu-central-1"
 )
 
 func NewS3Client(cfg config.Config, awsCfg aws.Config) *s3.Client {
 	var opts func(*s3.Options)
 	if cfg.UseLocalStack {
 		opts = func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(localStackEndpoint)
+			o.BaseEndpoint = aws.String(cfg.LocalstackHost)
 			o.Region = *aws.String(localStackRegion)
 			o.UsePathStyle = true
 		}
@@ -56,7 +55,7 @@ func NewSQSClient(cfg config.Config, awsCfg aws.Config) *sqs.Client {
 	var opts func(*sqs.Options)
 	if cfg.UseLocalStack {
 		opts = func(o *sqs.Options) {
-			o.BaseEndpoint = aws.String(localStackEndpoint)
+			o.BaseEndpoint = aws.String(cfg.LocalstackHost)
 			o.Region = *aws.String(localStackRegion)
 		}
 	} else {

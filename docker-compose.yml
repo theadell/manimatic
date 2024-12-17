@@ -1,0 +1,74 @@
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: manimatic-localstack
+    ports:
+      - "127.0.0.1:4566:4566"           
+    environment:
+      - SERVICES=s3,sqs
+      - DEBUG=1
+      - LOCALSTACK_HOST=localstack:4566
+      - REGION=eu-central-1
+      - TASK_QUEUE_NAME=manim-task-queue
+      - RESULT_QUEUE_NAME=manim-result-queue
+      - BUCKET_NAME=manim-worker-bucket
+    volumes:
+      # initialization script
+      - ./init-awslocal.sh:/etc/localstack/init/ready.d/init-awslocal.sh
+      # - ./localstack-volume:/var/lib/localstack
+    healthcheck:
+      test: >-
+        curl -sf localhost:4566/_localstack/init/ready | grep -q '"completed": true,'
+      interval: 5s
+      timeout: 5s
+      start_period: 1m
+      retries: 5
+
+  api:
+    build:
+      context: app
+      dockerfile: Dockerfile.api 
+    depends_on:
+      localstack:
+        condition: service_healthy
+    container_name: manimatic-api 
+    env_file:
+      - ./app/.env.local 
+    environment:
+      - LOCALSTACK=true
+      - LOCALSTACK_HOST=http://localstack:4566
+      - TASK_QUEUE_URL=http://sqs.eu-central-1.localstack:4566/000000000000/manim-task-queue
+      - RESULT_QUEUE_URL=http://sqs.eu-central-1.localstack:4566/000000000000/manim-result-queue
+      - VIDEO_BUCKET_NAME=manim-worker-bucket
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-central-1
+      - LOG_LEVEL=debug
+    ports:
+      - "127.0.0.1:8080:8080"
+  worker:
+    build:
+      context: app
+      dockerfile: Dockerfile.worker 
+    depends_on:
+      localstack:
+        condition: service_healthy
+      api:
+        condition: service_started
+    container_name: manimatic-worker 
+    environment:
+      - LOCALSTACK=true
+      - LOCALSTACK_HOST=http://localstack:4566
+      - TASK_QUEUE_URL=http://sqs.eu-central-1.localstack:4566/000000000000/manim-task-queue
+      - RESULT_QUEUE_URL=http://sqs.eu-central-1.localstack:4566/000000000000/manim-result-queue
+      - VIDEO_BUCKET_NAME=manim-worker-bucket
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-central-1
+      - LOG_LEVEL=debug
+
+
+
+      
+    
+  
