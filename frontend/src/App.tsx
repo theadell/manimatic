@@ -15,6 +15,11 @@ import {
   CircularProgress,
   Skeleton,
   Button,
+  Dialog,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  DialogActions
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -87,14 +92,23 @@ function AnimationGenerator() {
   // State Management
   const [prompt, setPrompt] = useState('');
   const [script, setScript] = useState('');
+  const [open, setOpen] = React.useState(false);
   const [editedScript, setEditedScript] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [compiledResult, setCompiledResult] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isCompiling, setIsCompiling] = useState(false);
+  // const [isCompiling, setIsCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const generationTimeoutRef = useRef<number | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+
+  const handleClickOpen = () => {
+    setOpen(true);
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+  };
 
   const resetGeneration = useCallback(() => {
     if (generationTimeoutRef.current) {
@@ -123,7 +137,7 @@ function AnimationGenerator() {
     setCompiledResult('');
     setError(null);
 
-    generationTimeoutRef.current = setTimeout(resetGeneration, 5000);
+    generationTimeoutRef.current = setTimeout(resetGeneration, 8000);
 
     try {
       const response = await fetch(`${apiBaseUrl}/generate`, {
@@ -144,6 +158,7 @@ function AnimationGenerator() {
   }, [prompt, resetGeneration]);
 
   // Compile Script Handler
+  /*
   const handleCompileScript = useCallback(async () => {
     setIsCompiling(true);
     setCompiledResult('');
@@ -166,7 +181,7 @@ function AnimationGenerator() {
       setIsCompiling(false);
     }
   }, [editedScript]);
-
+ */
   // Script Copy Handler
   const handleCopyScript = useCallback(() => {
     const scriptToCopy = editedScript || script;
@@ -199,7 +214,7 @@ function AnimationGenerator() {
 
         const healthzResponse = await fetch(`${apiBaseUrl}/healthz`, {
           method: 'GET',
-          credentials: 'include', 
+          credentials: 'include',
         });
 
         if (!healthzResponse.ok) {
@@ -234,10 +249,10 @@ function AnimationGenerator() {
               setVideoUrl(message.content);
               setIsGenerating(false);
               break;
-            case 'compiled':
-              setCompiledResult(message.content);
-              setIsCompiling(false);
-              break;
+            //case 'compiled':
+             // setCompiledResult(message.content);
+              //setIsCompiling(false);
+              //break;
           }
         };
 
@@ -245,7 +260,7 @@ function AnimationGenerator() {
           console.error('EventSource failed:', error);
           eventSource.close();
           setIsGenerating(false);
-          setIsCompiling(false);
+          //setIsCompiling(false);
           setError('Connection error. Please refresh and try again.');
         };
 
@@ -259,7 +274,7 @@ function AnimationGenerator() {
         console.error('Initialization failed:', error);
         setError('Health check failed. Unable to connect to the server.');
         setIsGenerating(false);
-        setIsCompiling(false);
+        //setIsCompiling(false);
       }
     };
 
@@ -446,6 +461,7 @@ function AnimationGenerator() {
                             >
                               <ContentCopyIcon fontSize="small" />
                             </IconButton>
+                            {/* 
                             <Button
                               variant="contained"
                               color="primary"
@@ -456,6 +472,37 @@ function AnimationGenerator() {
                             >
                               {isCompiling ? 'Compiling...' : 'Compile'}
                             </Button>
+                            */}
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              startIcon={<PlayArrowIcon />}
+                              size="small"
+                              onClick={handleClickOpen}
+                            >
+                               {'Compile'}
+                            </Button>
+
+                            <Dialog
+                              open={open}
+                              onClose={handleClose}
+                              aria-labelledby="alert-dialog-title"
+                              aria-describedby="alert-dialog-description"
+                            >
+                              <DialogTitle id="alert-dialog-title">
+                              {"This Feature is Taking a Break"}
+                              </DialogTitle>
+                              <DialogContent>
+                                <DialogContentText id="alert-dialog-description">
+                                This feature is taking a short break while we work on some improvements.
+                                It 'll be back soon!
+                                </DialogContentText>
+                              </DialogContent>
+                              <DialogActions>
+                                <Button onClick={handleClose}>Alright</Button>
+                              </DialogActions>
+                            </Dialog>
+
                           </Box>
                         </Box>
                         <Box
