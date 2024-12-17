@@ -218,7 +218,10 @@ func (ws *WorkerService) compileManimScript(msg events.Message) (string, string,
 
 	outputVideoPath := filepath.Join(taskDir, "output.mp4")
 
-	cmd := exec.Command("manim", "-qm", "-o", outputVideoPath, scriptFilePath)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "manim", "-qm", "-o", outputVideoPath, scriptFilePath)
 	var stderr bytes.Buffer
 	var stdOut bytes.Buffer
 
