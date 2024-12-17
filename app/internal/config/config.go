@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log/slog"
 	"os"
+	"runtime"
 	"strconv"
 )
 
@@ -32,7 +33,10 @@ func LoadConfig() *Config {
 	logLevelStr := getEnvString("LOG_LEVEL", "info")
 	config.LogFormat = getEnvString("LOG_FORMAT", "text")
 	config.LogLevel = parseLogLevel(logLevelStr)
-	config.MaxConcurrency = getEnvInt("MAX_CONCURRENT_JOBS", 2)
+	config.MaxConcurrency = getEnvInt("MAX_CONCURRENCY", runtime.NumCPU())
+	if config.MaxConcurrency <= 0 || config.MaxConcurrency > 20 {
+		config.MaxConcurrency = runtime.NumCPU()
+	}
 	config.VideoBucketName = getEnvString("VIDEO_BUCKET_NAME", "manim-worker-bucket")
 
 	flag.StringVar(&config.Host, "host", config.Host, "Server host")
@@ -44,7 +48,7 @@ func LoadConfig() *Config {
 
 	logLevelFlag := flag.String("log-level", logLevelStr, "Logging level (debug, info, warn, error)")
 	flag.StringVar(&config.LogFormat, "log-format", config.LogFormat, "Logging format (text or json)")
-	flag.IntVar(&config.MaxConcurrency, "max-concurrent", config.MaxConcurrency, "Max concurrent job processing")
+	flag.IntVar(&config.MaxConcurrency, "max-concurrency", config.MaxConcurrency, "Max concurrent job processing")
 	flag.StringVar(&config.VideoBucketName, "video-bucket-name", config.VideoBucketName, "S3 bucket for output videos")
 
 	flag.Parse()
