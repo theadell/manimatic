@@ -1,4 +1,4 @@
-# Manimatic: Effortless Math Animations with Natural Language
+# Manimatic: Math Animations with Natural Language
 
 Manimatic is an app for creating animations with [Manim](https://docs.manim.community/) (a popular engine for explanatory math videos). Instead of writing Python code manually, you can describe your animation in plain language, and the app generates the code for you, compiles it, and returns both the animation video and the code. An integrated editor lets you tweak the generated script and recompile with your changes.
 
