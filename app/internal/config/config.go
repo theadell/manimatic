@@ -1,11 +1,18 @@
 package config
 
 import (
+	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
 type Config struct {
@@ -20,9 +27,12 @@ type Config struct {
 	LogFormat       string
 	MaxConcurrency  int
 	VideoBucketName string
+
+	OpenAIKeyFile    string // Path to Docker secret file
+	OpenAIKeySSMPath string // Path in AWS Parameter Store
 }
 
-func LoadConfig() *Config {
+func LoadConfig() (*Config, error) {
 	config := &Config{}
 
 	config.Host = getEnvString("HOST", "0.0.0.0")
@@ -30,6 +40,8 @@ func LoadConfig() *Config {
 	config.UseLocalStack = getEnvBool("LOCALSTACK")
 	config.LocalstackHost = getEnvString("LOCALSTACK_HOST", "http://localhost:4566")
 	config.OpenAIKey = getEnvString("OPENAI_API_KEY", "")
+	config.OpenAIKeyFile = getEnvString("OPENAI_API_KEY_FILE", "")
+	config.OpenAIKeySSMPath = getEnvString("OPENAI_API_KEY_SSM_PATH", "")
 	config.TaskQueueURL = getEnvString("TASK_QUEUE_URL", "http://sqs.eu-central-1.localhost:4566/000000000000/manim-task-queue")
 	config.ResultQueueURL = getEnvString("RESULT_QUEUE_URL", "http://sqs.eu-central-1.localhost:4566/000000000000/manim-result-queue")
 	logLevelStr := getEnvString("LOG_LEVEL", "info")
@@ -46,6 +58,8 @@ func LoadConfig() *Config {
 	flag.BoolVar(&config.UseLocalStack, "localstack", config.UseLocalStack, "Use localstack")
 	flag.StringVar(&config.LocalstackHost, "localstack-host", config.LocalstackHost, "Localstack Host")
 	flag.StringVar(&config.OpenAIKey, "openai-api-key", config.OpenAIKey, "OpenAI API key")
+	flag.StringVar(&config.OpenAIKeyFile, "openai-api-key-file", config.OpenAIKeyFile, "Path to Docker secret file containing OpenAI key")
+	flag.StringVar(&config.OpenAIKeySSMPath, "openai-api-key-ssm-path", config.OpenAIKeySSMPath, "AWS SSM Parameter Store path for OpenAI key")
 	flag.StringVar(&config.TaskQueueURL, "task-queue-url", config.TaskQueueURL, "Task Queue URL")
 	flag.StringVar(&config.ResultQueueURL, "result-queue-url", config.ResultQueueURL, "Result Queue URL")
 
@@ -60,7 +74,20 @@ func LoadConfig() *Config {
 		config.LogLevel = parseLogLevel(*logLevelFlag)
 	}
 
-	return config
+	var err error
+	if config.OpenAIKeyFile != "" {
+		config.OpenAIKey, err = readSecretFile(config.OpenAIKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read OpenAI key from Docker secret: %w", err)
+		}
+	} else if config.OpenAIKeySSMPath != "" && !config.UseLocalStack {
+		config.OpenAIKey, err = readAWSParameter(config.OpenAIKeySSMPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read OpenAI key from AWS Parameter Store: %w", err)
+		}
+	}
+
+	return config, nil
 }
 
 func getEnvString(key, defaultValue string) string {
@@ -99,4 +126,33 @@ func getEnvBool(key string) bool {
 		return false
 	}
 	return val
+}
+
+func readSecretFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read secret file: %w", err)
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+func readAWSParameter(path string) (string, error) {
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	client := ssm.NewFromConfig(cfg)
+	input := &ssm.GetParameterInput{
+		Name:           &path,
+		WithDecryption: aws.Bool(true),
+	}
+
+	result, err := client.GetParameter(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to get AWS SSM parameter: %w", err)
+	}
+
+	return *result.Parameter.Value, nil
 }

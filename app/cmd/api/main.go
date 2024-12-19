@@ -19,13 +19,12 @@ import (
 )
 
 func main() {
-	cfg := config.LoadConfig()
-
-	logger := logger.NewLogger(cfg)
-	manimService, err := genmanim.NewLLMManimService(cfg.OpenAIKey)
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error loading config %s \n", err.Error())
 	}
+	logger := logger.NewLogger(cfg)
+	manimService := genmanim.NewLLMManimService(cfg.OpenAIKey)
 
 	awsConfig, err := awsconfig.LoadDefaultConfig(context.TODO())
 	if err != nil {

@@ -40,9 +40,9 @@ The app comprises:
    ```bash
    git clone https://github.com/theadell/manimatic
    ```
-2. your OpenAI API key to a .env.local file:
+2. Save your OpenAI API key to a file named openai_api_key.secret (ignored by git):
     ```bash
-    OPENAI_API_KEY=your-api-key
+    echo "your-api-key" > openai_api_key.secret
     ```
 3. Start the backend and infrastructure with Docker Compose:
     ```bash

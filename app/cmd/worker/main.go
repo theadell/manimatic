@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"manimatic/internal/config"
 	"manimatic/internal/worker"
 	"os"
@@ -9,7 +10,10 @@ import (
 
 func main() {
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Error loading config %s \n", err.Error())
+	}
 
 	workerService, err := worker.NewWorkerService(cfg)
 	if err != nil {

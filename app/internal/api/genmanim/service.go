@@ -14,13 +14,10 @@ type LLMManimService struct {
 	client *openai.Client
 }
 
-func NewLLMManimService(apiKey string) (*LLMManimService, error) {
-	if apiKey == "" {
-		return nil, errors.New("api key is required")
-	}
+func NewLLMManimService(apiKey string) *LLMManimService {
 
 	client := openai.NewClient(option.WithAPIKey(apiKey))
-	return &LLMManimService{client: client}, nil
+	return &LLMManimService{client: client}
 }
 
 func (s *LLMManimService) GenerateScript(ctx context.Context, userPrompt string, moderationOn bool) (ManimScriptResponse, error) {

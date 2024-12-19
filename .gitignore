@@ -26,5 +26,8 @@ go.work.sum
 .env
 .env.local
 .env.*.local
+# secrets 
+openai_api_key.secret
+*.secret
 # media folder 
 media
