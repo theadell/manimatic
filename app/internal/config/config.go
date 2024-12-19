@@ -20,7 +20,7 @@ type Config struct {
 	TaskQueueURL    string
 	ResultQueueURL  string
 	UseLocalStack   bool
-	LocalstackHost  string
+	AWSEndpointURL  string
 	Host            string
 	Port            int
 	LogLevel        slog.Level
@@ -38,7 +38,7 @@ func LoadConfig() (*Config, error) {
 	config.Host = getEnvString("HOST", "0.0.0.0")
 	config.Port = getEnvInt("PORT", 8080)
 	config.UseLocalStack = getEnvBool("LOCALSTACK")
-	config.LocalstackHost = getEnvString("LOCALSTACK_HOST", "http://localhost:4566")
+	config.AWSEndpointURL = getEnvString("AWS_ENDPOINT_URL", "")
 	config.OpenAIKey = getEnvString("OPENAI_API_KEY", "")
 	config.OpenAIKeyFile = getEnvString("OPENAI_API_KEY_FILE", "")
 	config.OpenAIKeySSMPath = getEnvString("OPENAI_API_KEY_SSM_PATH", "")
@@ -56,7 +56,7 @@ func LoadConfig() (*Config, error) {
 	flag.StringVar(&config.Host, "host", config.Host, "Server host")
 	flag.IntVar(&config.Port, "port", config.Port, "Server port")
 	flag.BoolVar(&config.UseLocalStack, "localstack", config.UseLocalStack, "Use localstack")
-	flag.StringVar(&config.LocalstackHost, "localstack-host", config.LocalstackHost, "Localstack Host")
+	flag.StringVar(&config.AWSEndpointURL, "aws-endpoint-url", config.AWSEndpointURL, "Custom AWS endpoint URL (e.g., for LocalStack or other mock services)")
 	flag.StringVar(&config.OpenAIKey, "openai-api-key", config.OpenAIKey, "OpenAI API key")
 	flag.StringVar(&config.OpenAIKeyFile, "openai-api-key-file", config.OpenAIKeyFile, "Path to Docker secret file containing OpenAI key")
 	flag.StringVar(&config.OpenAIKeySSMPath, "openai-api-key-ssm-path", config.OpenAIKeySSMPath, "AWS SSM Parameter Store path for OpenAI key")

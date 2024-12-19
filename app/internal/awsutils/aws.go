@@ -12,15 +12,15 @@ import (
 )
 
 const (
-	localStackRegion = "eu-central-1"
+	awsDefaultRegion = "eu-central-1"
 )
 
 func NewS3Client(cfg config.Config, awsCfg aws.Config) *s3.Client {
 	var opts func(*s3.Options)
-	if cfg.UseLocalStack {
+	if cfg.AWSEndpointURL != "" {
 		opts = func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(cfg.LocalstackHost)
-			o.Region = *aws.String(localStackRegion)
+			o.BaseEndpoint = aws.String(cfg.AWSEndpointURL)
+			o.Region = *aws.String(awsDefaultRegion)
 			o.UsePathStyle = true
 		}
 	} else {
@@ -53,10 +53,10 @@ func (p *S3Presigner) PreSignGet(key string, expires int64) (*v4.PresignedHTTPRe
 
 func NewSQSClient(cfg config.Config, awsCfg aws.Config) *sqs.Client {
 	var opts func(*sqs.Options)
-	if cfg.UseLocalStack {
+	if cfg.AWSEndpointURL != "" {
 		opts = func(o *sqs.Options) {
-			o.BaseEndpoint = aws.String(cfg.LocalstackHost)
-			o.Region = *aws.String(localStackRegion)
+			o.BaseEndpoint = aws.String(cfg.AWSEndpointURL)
+			o.Region = *aws.String(awsDefaultRegion)
 		}
 	} else {
 		opts = func(o *sqs.Options) {}

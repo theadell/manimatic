@@ -42,11 +42,11 @@ source-local-env:
 run-worker: source-env
 	go run ./cmd/worker/main.go -log-level=debug
 run-worker-local:
-	go run ./cmd/worker/main.go -log-level=debug -localstack
+	go run ./cmd/worker/main.go -log-level=debug -aws-endpoint-url http://localhost:4566
 run-api: source-env
 	go run ./cmd/api/main.go -log-level=debug
 run-api-local: source-local-env
-	go run ./cmd/api/main.go -log-level=debug -localstack
+	go run ./cmd/api/main.go -log-level=debug -aws-endpoint-url http://localhost:4566
 
 # Full local setup
 setup: localstack-start sleep create-task-queue create-result-queue create-bucket
