@@ -1,17 +1,15 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
-import { ThemeProvider, CssBaseline, Container, Grid, Snackbar, Alert, Box } from '@mui/material';
-import { AnimatePresence } from 'framer-motion';
+import { ThemeProvider, CssBaseline, Container, Snackbar, Alert, Box, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from '@mui/material';
 import * as monaco from 'monaco-editor';
 import { createAppTheme } from './theme/theme';
 import { useEventSource } from './hooks/useEventSource';
-import { VideoPreview } from './components/VideoPreview';
-import { ScriptEditor } from './components/ScriptEditor';
 import { PromptInput } from './components/PromptInput';
 import { Header } from './components/Header';
-
+import { useFeatures } from './hooks/useFeatures';
 import { LoadingSkeleton } from './components/LoadingSkeleton';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const GENERATION_TIMEOUT = 10_000;
 
 function AnimationGenerator() {
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -19,22 +17,28 @@ function AnimationGenerator() {
   const [script, setScript] = useState('');
   const [editedScript, setEditedScript] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isVideoLoading, setIsVideoLoading] = useState(false);
+  const [isScriptLoading, setIsScriptLoading] = useState(false);
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [showCompileDisabledDialog, setShowCompileDisabledDialog] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const generationTimeoutRef = useRef<number | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const theme = useMemo(() => createAppTheme(isDarkMode ? 'dark' : 'light'), [isDarkMode]);
+  const { isFeatureEnabled } = useFeatures(apiBaseUrl);
 
-  const handleEditorDidMount = (editor: monaco.editor.IStandaloneCodeEditor) => {
+  const handleEditorDidMount = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
     editorRef.current = editor;
-  };
+  }, []);
 
   const resetGeneration = useCallback(() => {
     if (generationTimeoutRef.current) {
       clearTimeout(generationTimeoutRef.current);
     }
-    setIsGenerating(false);
+    setIsScriptLoading(false);
+    setIsVideoLoading(false);
     setError('Generation timed out. Please try again.');
   }, []);
 
@@ -46,13 +50,14 @@ function AnimationGenerator() {
       return;
     }
 
-    setIsGenerating(true);
+    setIsScriptLoading(true);
+    setIsVideoLoading(true);
     setScript('');
     setEditedScript('');
     setVideoUrl('');
     setError(null);
 
-    generationTimeoutRef.current = setTimeout(resetGeneration, 8000);
+    generationTimeoutRef.current = setTimeout(resetGeneration, GENERATION_TIMEOUT);
 
     try {
       const response = await fetch(`${apiBaseUrl}/generate`, {
@@ -68,7 +73,8 @@ function AnimationGenerator() {
     } catch (error) {
       console.error('Error generating content:', error);
       setError('Failed to generate animation. Please try again.');
-      setIsGenerating(false);
+      setIsVideoLoading(false);
+      setIsScriptLoading(false);
     }
   }, [prompt, resetGeneration]);
 
@@ -95,10 +101,34 @@ function AnimationGenerator() {
     }
   }, [videoUrl]);
 
-  const handleCompileClick = useCallback(() => {
-    // Show dialog instead of actual compilation
-    setError('This feature is currently unavailable while we work on improvements.');
-  }, []);
+  const handleCompileClick = useCallback(async () => {
+    if (!isFeatureEnabled('user-compile')) {
+      setShowCompileDisabledDialog(true);
+      return;
+    }
+
+    setIsCompiling(true);
+    setIsVideoLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/compile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: editedScript }),
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Compilation failed');
+      }
+    } catch (error) {
+      console.error('Error compiling script:', error);
+      setError('Failed to compile script. Please try again.');
+      setIsCompiling(false);
+      setIsVideoLoading(false);
+    }
+  }, [editedScript, isFeatureEnabled]);
 
   useEventSource({
     apiBaseUrl,
@@ -107,25 +137,30 @@ function AnimationGenerator() {
       setEditedScript(receivedScript);
       setPrompt('');
     }, []),
-    onVideo: setVideoUrl,
+    onVideo: useCallback((url: string) => {
+      setVideoUrl(url);
+      setIsVideoLoading(false);
+      setIsCompiling(false);
+    }, []),
     onError: setError,
     generationTimeoutRef,
     editorRef,
-    setIsGenerating,
+    setIsScriptLoading,
+    setIsVideoLoading
   });
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <Header 
-          isDarkMode={isDarkMode} 
-          onToggleTheme={() => setIsDarkMode(!isDarkMode)} 
+        <Header
+          isDarkMode={isDarkMode}
+          onToggleTheme={() => setIsDarkMode(!isDarkMode)}
         />
-        
-        <Container 
-          maxWidth="xl" 
-          sx={{ 
+
+        <Container
+          maxWidth="xl"
+          sx={{
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
@@ -135,62 +170,44 @@ function AnimationGenerator() {
           }}
         >
           <Box sx={{ flex: 1 }}>
-            {isGenerating ? (
-              <LoadingSkeleton />
-            ) : (
-              <Grid container spacing={4} sx={{ height: '100%' }}>
-                <Grid item xs={12} lg={6}>
-                  <Box
-                    sx={{
-                      height: '100%',
-                      borderRadius: 2,
-                      overflow: 'hidden',
-                      backgroundColor: 'background.paper'
-                    }}
-                  >
-                    <AnimatePresence>
-                      {videoUrl && (
-                        <VideoPreview 
-                          videoUrl={videoUrl} 
-                          onDownload={handleDownloadVideo}
-                        />
-                      )}
-                    </AnimatePresence>
-                  </Box>
-                </Grid>
-                <Grid item xs={12} lg={6}>
-                  <Box
-                    sx={{
-                      height: '100%',
-                      borderRadius: 2,
-                      overflow: 'hidden',
-                      backgroundColor: 'background.paper'
-                    }}
-                  >
-                    <AnimatePresence>
-                      {script && (
-                        <ScriptEditor
-                          script={script}
-                          onCopy={handleCopyScript}
-                          onScriptChange={(value) => setEditedScript(value || '')}
-                          onEditorMount={handleEditorDidMount}
-                          onCompileClick={handleCompileClick}
-                        />
-                      )}
-                    </AnimatePresence>
-                  </Box>
-                </Grid>
-              </Grid>
-            )}
+            <LoadingSkeleton
+              isVideoLoading={isVideoLoading}
+              isScriptLoading={isScriptLoading}
+              isCompiling={isCompiling}
+              videoUrl={videoUrl}
+              script={script}
+              onDownload={handleDownloadVideo}
+              onCopy={handleCopyScript}
+              onScriptChange={(value) => setEditedScript(value || '')}
+              onEditorMount={handleEditorDidMount}
+              onCompileClick={handleCompileClick}
+            />
           </Box>
 
           <PromptInput
             prompt={prompt}
-            isGenerating={isGenerating}
+            isGenerating={isVideoLoading || isScriptLoading}
             onChange={setPrompt}
             onSubmit={handleGenerate}
           />
         </Container>
+
+        <Dialog
+          open={showCompileDisabledDialog}
+          onClose={() => setShowCompileDisabledDialog(false)}
+        >
+          <DialogTitle>Compilation Unavailable</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              The compilation feature is currently disabled for your account. Please contact support for more information.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowCompileDisabledDialog(false)} color="primary">
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         <Snackbar
           open={!!error}
@@ -203,7 +220,7 @@ function AnimationGenerator() {
             severity={error?.includes('copied') ? 'success' : 'error'}
             sx={{
               backdropFilter: 'blur(10px)',
-              backgroundColor: theme => 
+              backgroundColor: theme =>
                 theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)'
             }}
           >

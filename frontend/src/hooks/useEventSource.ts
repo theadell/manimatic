@@ -9,7 +9,8 @@ export const useEventSource = ({
   onError,
   generationTimeoutRef,
   editorRef,
-  setIsGenerating,
+  setIsVideoLoading,
+  setIsScriptLoading
 }: {
   apiBaseUrl: string;
   onScript: (script: string) => void;
@@ -17,7 +18,8 @@ export const useEventSource = ({
   onError: (error: string) => void;
   generationTimeoutRef: React.MutableRefObject<number | null>;
   editorRef: React.MutableRefObject<monaco.editor.IStandaloneCodeEditor | null>;
-  setIsGenerating: (state: boolean) => void;
+  setIsVideoLoading: (state: boolean) => void;
+  setIsScriptLoading: (state: boolean) => void;
 }) => {
   useEffect(() => {
     const initializeEventSource = async () => {
@@ -47,12 +49,12 @@ export const useEventSource = ({
               if (editorRef.current) {
                 editorRef.current.setValue(receivedScript);
               }
-              setIsGenerating(false);
+              setIsScriptLoading(false);
               break;
             }
             case 'video':
               onVideo(message.content);
-              setIsGenerating(false);
+              setIsVideoLoading(false);
               break;
           }
         };
@@ -60,7 +62,8 @@ export const useEventSource = ({
         eventSource.onerror = (error) => {
           console.error('EventSource failed:', error);
           eventSource.close();
-          setIsGenerating(false);
+          setIsScriptLoading(false)
+          setIsVideoLoading(false)
           onError('Connection error. Please refresh and try again.');
         };
 
@@ -73,10 +76,11 @@ export const useEventSource = ({
       } catch (error) {
         console.error('Initialization failed:', error);
         onError('Health check failed. Unable to connect to the server.');
-        setIsGenerating(false);
-      }
+        setIsScriptLoading(false)
+        setIsVideoLoading(false)
+    }
     };
 
     initializeEventSource();
-  }, [apiBaseUrl, onScript, onVideo, onError, generationTimeoutRef, editorRef, setIsGenerating]);
+  }, [apiBaseUrl, onScript, onVideo, onError, generationTimeoutRef, editorRef, setIsScriptLoading, setIsVideoLoading]);
 }

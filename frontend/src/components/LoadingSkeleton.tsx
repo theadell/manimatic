@@ -1,24 +1,123 @@
-import { Grid, Paper, Typography, Skeleton, Box } from '@mui/material';
+import { Grid, Typography, Skeleton, Box } from '@mui/material';
+import { AnimatePresence } from 'framer-motion';
+import { VideoPreview } from './VideoPreview';
+import { ScriptEditor } from './ScriptEditor';
+import * as monaco from 'monaco-editor';
 
-export const LoadingSkeleton = () => (
-  <Grid container spacing={3}>
-    {[0, 1].map((item) => (
-      <Grid item xs={12} md={6} key={item}>
-        <Paper elevation={1} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <Typography variant="h6" color="primary" sx={{ mb: 2 }}>
-            {item === 0 ? 'Generated Animation' : 'Animation Script'}
-          </Typography>
-          {item === 0 ? (
-            <Skeleton variant="rectangular" width="100%" height={300} />
+type LoadingSkeletonProps = {
+  isVideoLoading: boolean;
+  isScriptLoading: boolean;
+  isCompiling: boolean;
+  videoUrl: string;
+  script: string;
+  onDownload: () => void;
+  onCopy: () => void;
+  onScriptChange: (value: string | undefined) => void;
+  onEditorMount: (editor: monaco.editor.IStandaloneCodeEditor) => void;
+  onCompileClick: () => void;
+};
+
+export const LoadingSkeleton = ({
+  isVideoLoading,
+  isScriptLoading,
+  isCompiling,
+  videoUrl,
+  script,
+  onDownload,
+  onCopy,
+  onScriptChange,
+  onEditorMount,
+  onCompileClick
+}: LoadingSkeletonProps) => {
+  const shouldRender = isVideoLoading || isScriptLoading || videoUrl || script;
+  
+  if (!shouldRender) {
+    return null;
+  }
+
+  return (
+    <Grid container spacing={4} sx={{ height: '100%' }}>
+      <Grid item xs={12} lg={6}>
+        <Box
+          sx={{
+            height: '100%',
+            borderRadius: 2,
+            overflow: 'hidden',
+            backgroundColor: 'background.paper',
+            p: 3
+          }}
+        >
+          {isVideoLoading ? (
+            <>
+              <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Skeleton variant="circular" width={24} height={24} />
+                <Skeleton width={160} />
+              </Typography>
+              <Skeleton
+                variant="rectangular"
+                width="100%"
+                height={400}
+                animation="wave"
+                sx={{ borderRadius: 1, opacity: 0.8 }}
+              />
+            </>
           ) : (
-            <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {[...Array(5)].map((_, index) => (
-                <Skeleton key={index} variant="text" width="100%" height={40} />
-              ))}
-            </Box>
+            <AnimatePresence>
+              {videoUrl && (
+                <VideoPreview
+                  videoUrl={videoUrl}
+                  onDownload={onDownload}
+                />
+              )}
+            </AnimatePresence>
           )}
-        </Paper>
+        </Box>
       </Grid>
-    ))}
-  </Grid>
-);
+      <Grid item xs={12} lg={6}>
+        <Box
+          sx={{
+            height: '100%',
+            borderRadius: 2,
+            overflow: 'hidden',
+            backgroundColor: 'background.paper',
+            p: 3
+          }}
+        >
+          {isScriptLoading ? (
+            <>
+              <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Skeleton variant="circular" width={24} height={24} />
+                <Skeleton width={140} />
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {[...Array(6)].map((_, index) => (
+                  <Skeleton
+                    key={index}
+                    variant="text"
+                    width={`${Math.random() * (100 - 70) + 70}%`}
+                    height={24}
+                    animation="wave"
+                    sx={{ opacity: 0.8 }}
+                  />
+                ))}
+              </Box>
+            </>
+          ) : (
+            <AnimatePresence>
+              {script && (
+                <ScriptEditor
+                  script={script}
+                  onCopy={onCopy}
+                  onScriptChange={onScriptChange}
+                  onEditorMount={onEditorMount}
+                  onCompileClick={onCompileClick}
+                  isCompiling={isCompiling}
+                />
+              )}
+            </AnimatePresence>
+          )}
+        </Box>
+      </Grid>
+    </Grid>
+  );
+};
