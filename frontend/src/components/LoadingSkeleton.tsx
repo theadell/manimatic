@@ -4,6 +4,8 @@ import { VideoPreview } from './VideoPreview';
 import { ScriptEditor } from './ScriptEditor';
 import * as monaco from 'monaco-editor';
 
+
+
 type LoadingSkeletonProps = {
   isVideoLoading: boolean;
   isScriptLoading: boolean;
@@ -15,7 +17,7 @@ type LoadingSkeletonProps = {
   onScriptChange: (value: string | undefined) => void;
   onEditorMount: (editor: monaco.editor.IStandaloneCodeEditor) => void;
   onCompileClick: () => void;
-};
+}
 
 export const LoadingSkeleton = ({
   isVideoLoading,
@@ -29,10 +31,10 @@ export const LoadingSkeleton = ({
   onEditorMount,
   onCompileClick
 }: LoadingSkeletonProps) => {
+
   const shouldRender = isVideoLoading || isScriptLoading || videoUrl || script;
-  
   if (!shouldRender) {
-    return null;
+    return null
   }
 
   return (
@@ -120,4 +122,4 @@ export const LoadingSkeleton = ({
       </Grid>
     </Grid>
   );
-};
+}
