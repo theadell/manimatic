@@ -1,6 +1,7 @@
 package api
 
 import (
+	"manimatic/internal/api/features"
 	"manimatic/internal/api/middleware"
 	"net/http"
 	"strings"
@@ -20,6 +21,11 @@ func (a *App) setupRoutes() http.Handler {
 	mux.HandleFunc("POST /generate", a.HandleGenerate)
 	mux.HandleFunc("GET /events", a.sseHandler)
 	mux.HandleFunc("GET /healthz", healthCheckHandler)
+	mux.HandleFunc("GET /features", a.featuresHandler)
+
+	if a.config.Features.IsEnabled(features.UserCompile) {
+		mux.HandleFunc("POST /compile", a.handleCompile)
+	}
 
 	return mux
 

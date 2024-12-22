@@ -10,6 +10,9 @@ x-aws-credentials: &aws-credentials
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
 
+x-api-features: &api-features
+  FEATURES: user-compile
+
 services:
   localstack:
     image: localstack/localstack:latest
@@ -47,7 +50,7 @@ services:
     secrets:
       - openai_api_key 
     environment:
-      <<: [*aws-localstack-config, *aws-credentials]
+      <<: [*aws-localstack-config, *aws-credentials, *api-features]
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
     ports:
       - "127.0.0.1:8080:8080"

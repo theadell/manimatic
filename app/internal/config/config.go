@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"manimatic/internal/api/features"
 	"os"
 	"runtime"
 	"strconv"
@@ -19,7 +20,6 @@ type Config struct {
 	OpenAIKey       string
 	TaskQueueURL    string
 	ResultQueueURL  string
-	UseLocalStack   bool
 	AWSEndpointURL  string
 	Host            string
 	Port            int
@@ -30,6 +30,11 @@ type Config struct {
 
 	OpenAIKeyFile    string // Path to Docker secret file
 	OpenAIKeySSMPath string // Path in AWS Parameter Store
+
+	EnableModeration bool
+
+	FeaturesFlag string
+	Features     *features.Features
 }
 
 func LoadConfig() (*Config, error) {
@@ -37,7 +42,6 @@ func LoadConfig() (*Config, error) {
 
 	config.Host = getEnvString("HOST", "0.0.0.0")
 	config.Port = getEnvInt("PORT", 8080)
-	config.UseLocalStack = getEnvBool("LOCALSTACK")
 	config.AWSEndpointURL = getEnvString("AWS_ENDPOINT_URL", "")
 	config.OpenAIKey = getEnvString("OPENAI_API_KEY", "")
 	config.OpenAIKeyFile = getEnvString("OPENAI_API_KEY_FILE", "")
@@ -52,10 +56,11 @@ func LoadConfig() (*Config, error) {
 		config.MaxConcurrency = runtime.NumCPU()
 	}
 	config.VideoBucketName = getEnvString("VIDEO_BUCKET_NAME", "manim-worker-bucket")
+	config.EnableModeration = getEnvBool("ENABLE_MODERATION")
+	config.FeaturesFlag = getEnvString("FEATURES", "")
 
 	flag.StringVar(&config.Host, "host", config.Host, "Server host")
 	flag.IntVar(&config.Port, "port", config.Port, "Server port")
-	flag.BoolVar(&config.UseLocalStack, "localstack", config.UseLocalStack, "Use localstack")
 	flag.StringVar(&config.AWSEndpointURL, "aws-endpoint-url", config.AWSEndpointURL, "Custom AWS endpoint URL (e.g., for LocalStack or other mock services)")
 	flag.StringVar(&config.OpenAIKey, "openai-api-key", config.OpenAIKey, "OpenAI API key")
 	flag.StringVar(&config.OpenAIKeyFile, "openai-api-key-file", config.OpenAIKeyFile, "Path to Docker secret file containing OpenAI key")
@@ -67,6 +72,10 @@ func LoadConfig() (*Config, error) {
 	flag.StringVar(&config.LogFormat, "log-format", config.LogFormat, "Logging format (text or json)")
 	flag.IntVar(&config.MaxConcurrency, "max-concurrency", config.MaxConcurrency, "Max concurrent job processing")
 	flag.StringVar(&config.VideoBucketName, "video-bucket-name", config.VideoBucketName, "S3 bucket for output videos")
+
+	flag.BoolVar(&config.EnableModeration, "enable-moderation", config.EnableModeration, "use the openAI moderation endpoint")
+
+	flag.StringVar(&config.FeaturesFlag, "features", config.FeaturesFlag, "Comma-separated list of features to enable")
 
 	flag.Parse()
 
@@ -80,12 +89,14 @@ func LoadConfig() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read OpenAI key from Docker secret: %w", err)
 		}
-	} else if config.OpenAIKeySSMPath != "" && !config.UseLocalStack {
+	} else if config.OpenAIKeySSMPath != "" {
 		config.OpenAIKey, err = readAWSParameter(config.OpenAIKeySSMPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read OpenAI key from AWS Parameter Store: %w", err)
 		}
 	}
+
+	config.Features = features.New(config.FeaturesFlag)
 
 	return config, nil
 }

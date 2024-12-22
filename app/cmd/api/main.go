@@ -24,6 +24,7 @@ func main() {
 		log.Fatalf("Error loading config %s \n", err.Error())
 	}
 	logger := logger.NewLogger(cfg)
+	logger.Info(cfg.Features.String())
 	manimService := genmanim.NewLLMManimService(cfg.OpenAIKey)
 
 	awsConfig, err := awsconfig.LoadDefaultConfig(context.TODO())

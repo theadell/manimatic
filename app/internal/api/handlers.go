@@ -14,6 +14,9 @@ import (
 type GenerateRequest struct {
 	Prompt string `json:"prompt"`
 }
+type CompileRequest struct {
+	Script string `json:"script"`
+}
 
 func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 	var req GenerateRequest
@@ -33,7 +36,7 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		ctx := context.Background()
-		result, err := a.manimService.GenerateScript(ctx, req.Prompt, true)
+		result, err := a.manimService.GenerateScript(ctx, req.Prompt, a.config.EnableModeration)
 		var msg events.Message
 		if err != nil {
 			a.logger.Error("failed to generate script", "error", err)
@@ -87,6 +90,30 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+}
+
+func (a *App) handleCompile(w http.ResponseWriter, r *http.Request) {
+	var req CompileRequest
+
+	err := ReadJSON(w, r, &req)
+	if err != nil || len(req.Script) < 8 {
+		a.badRequestResponse(w, "invalid request body")
+	}
+
+	sessionID := a.sm.GetString(r.Context(), middleware.UserSessionTokenKey)
+	if sessionID == "" {
+		a.serverError(w, fmt.Errorf("invalid, missing or expired session"))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	go func() {
+		msg := events.Message{Type: events.MessageTypeScriptUpdate, Content: req.Script, SessionId: sessionID}
+		err := a.queueMgr.EnqeueMsg(context.TODO(), &msg)
+		if err != nil {
+			slog.Error("failed to enqueue message", "error", err, "message", msg)
+		}
+	}()
 }
 
 func (a *App) sseHandler(w http.ResponseWriter, r *http.Request) {
@@ -144,4 +171,8 @@ func (a *App) sseHandler(w http.ResponseWriter, r *http.Request) {
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
+}
+
+func (a *App) featuresHandler(w http.ResponseWriter, r *http.Request) {
+	WriteJSON(w, http.StatusOK, a.config.Features)
 }
