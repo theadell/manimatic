@@ -21,7 +21,7 @@ func New(client *sqs.Client, queueURL, resultQueueURL string) *QueueManager {
 	return &QueueManager{client: client, tasQueueURL: queueURL, resultQueueURL: resultQueueURL}
 }
 
-func (q *QueueManager) EnqeueMsg(ctx context.Context, msg *events.Message) error {
+func (q *QueueManager) EnqeueMsg(ctx context.Context, msg *events.Event) error {
 	jsonMessage, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to serialize message %w", err)

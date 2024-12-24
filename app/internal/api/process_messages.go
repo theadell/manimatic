@@ -46,7 +46,7 @@ func (a *App) processNextVideoUpdateMessage(ctx context.Context) error {
 
 	msg := messages[0]
 	a.logger.Debug("processing video message")
-	var videoUpdateMsg events.Message
+	var videoUpdateMsg events.Event
 	err = json.Unmarshal([]byte(*msg.Body), &videoUpdateMsg)
 	if err != nil {
 		a.logger.Error("Failed to unmarshal message", "error", err)
@@ -54,11 +54,11 @@ func (a *App) processNextVideoUpdateMessage(ctx context.Context) error {
 		return err
 	}
 
-	if videoUpdateMsg.Type == events.MessageTypeVideoUpdate {
+	if videoUpdateMsg.Kind == events.KindCompileSucceeded {
 		err = a.MsgRouter.SendMessage(videoUpdateMsg)
 		if err != nil {
 			a.logger.Error("Failed to send message to connection manager",
-				"session_id", videoUpdateMsg.SessionId,
+				"session_id", videoUpdateMsg.SessionID,
 				"error", err)
 		}
 

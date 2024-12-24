@@ -11,6 +11,7 @@ import (
 	"manimatic/internal/awsutils"
 	"manimatic/internal/config"
 	"manimatic/internal/logger"
+	"manimatic/internal/worker/manimexec"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -41,6 +42,7 @@ type WorkerService struct {
 	workerPool    *WorkerPool
 	cancelContext context.Context
 	cancelFunc    context.CancelFunc
+	executer      *manimexec.Executor
 }
 
 func NewWorkerService(cfg *config.Config) (*WorkerService, error) {
@@ -73,6 +75,7 @@ func NewWorkerService(cfg *config.Config) (*WorkerService, error) {
 		workerPool:    workerPool,
 		cancelContext: ctx,
 		cancelFunc:    cancel,
+		executer:      manimexec.NewExecutor(""),
 	}, nil
 }
 
@@ -137,16 +140,25 @@ func (ws *WorkerService) fetchAndSubmitMessage() {
 }
 
 func (ws *WorkerService) processTask(task Task) error {
-	var message events.Message
-	if err := json.Unmarshal([]byte(*task.Message.Body), &message); err != nil {
+	var event events.Event
+	if err := json.Unmarshal([]byte(*task.Message.Body), &event); err != nil {
 		return fmt.Errorf("unmarshal failed: %v", err)
 	}
 
-	outputPath, taskDir, err := ws.compileManimScript(message)
+	if event.Kind != events.KindCompileRequested {
+		return fmt.Errorf("unexpected event kind: %s", event.Kind)
+	}
+
+	compileRequest, ok := event.Data.(events.CompileRequest)
+	if !ok {
+		return fmt.Errorf("invalid data type for %s event: %T", events.KindCompileRequested, event.Data)
+	}
+
+	res, err := ws.executer.ExecuteScript(context.TODO(), compileRequest.Script, event.SessionID)
 	if err != nil {
 		return fmt.Errorf("compilation failed: %v", err)
 	}
-
+	outputPath, taskDir := res.OutputPath, res.WorkingDir
 	defer os.RemoveAll(taskDir)
 
 	_, err = ws.sqsClient.DeleteMessage(ws.cancelContext, &sqs.DeleteMessageInput{
@@ -159,24 +171,24 @@ func (ws *WorkerService) processTask(task Task) error {
 
 	s3Key := ""
 	if ws.config.VideoBucketName != "" {
-		s3Key, err = ws.uploadVideoToS3(outputPath, message)
+		s3Key, err = ws.uploadVideoToS3(outputPath, event)
 		if err != nil {
 			return err
 		}
 	}
-	go ws.presignAndEnqueueResult(s3Key, message.SessionId)
+	go ws.presignAndEnqueueResult(s3Key, event.SessionID)
 
 	return nil
 }
 
-func (ws *WorkerService) uploadVideoToS3(outputPath string, message events.Message) (string, error) {
+func (ws *WorkerService) uploadVideoToS3(outputPath string, message events.Event) (string, error) {
 	videoFile, err := os.Open(outputPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open video: %v", err)
 	}
 	defer videoFile.Close()
 
-	s3Key := fmt.Sprintf("manim_videos/%s/%d.mp4", message.SessionId, time.Now().UnixNano())
+	s3Key := fmt.Sprintf("manim_videos/%s/%d.mp4", message.SessionID, time.Now().UnixNano())
 	_, err = ws.s3Uploader.Upload(ws.cancelContext, &s3.PutObjectInput{
 		Bucket: aws.String(ws.config.VideoBucketName),
 		Key:    aws.String(s3Key),
@@ -190,14 +202,18 @@ func (ws *WorkerService) uploadVideoToS3(outputPath string, message events.Messa
 	return s3Key, nil
 }
 
-func (ws *WorkerService) compileManimScript(msg events.Message) (string, string, error) {
+func (ws *WorkerService) compileManimScript(event events.Event) (string, string, error) {
 	compilationID := uuid.New().String()
-	contentStr, ok := msg.Content.(string)
-	if !ok {
-		return "", "", fmt.Errorf("invalid content type: %T", msg.Content)
+	if event.Kind != events.KindCompileRequested {
+		return "", "", fmt.Errorf("unexpected event kind: %s", event.Kind)
 	}
 
-	taskDir, err := os.MkdirTemp(ws.tempDir, fmt.Sprintf("%s_%s", msg.SessionId, compilationID))
+	compileRequest, ok := event.Data.(events.CompileRequest)
+	if !ok {
+		return "", "", fmt.Errorf("invalid data type for %s event: %T", events.KindCompileRequested, event.Data)
+	}
+
+	taskDir, err := os.MkdirTemp(ws.tempDir, fmt.Sprintf("%s_%s", event.SessionID, compilationID))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create task directory: %v", err)
 	}
@@ -209,7 +225,7 @@ func (ws *WorkerService) compileManimScript(msg events.Message) (string, string,
 	}
 	scriptFilePath := scriptFile.Name()
 
-	if _, err := scriptFile.Write([]byte(contentStr)); err != nil {
+	if _, err := scriptFile.Write([]byte(compileRequest.Script)); err != nil {
 		scriptFile.Close()
 		os.RemoveAll(taskDir)
 		return "", "", fmt.Errorf("script write failed: %v", err)
@@ -222,6 +238,9 @@ func (ws *WorkerService) compileManimScript(msg events.Message) (string, string,
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "manim", "-ql", "-o", outputVideoPath, scriptFilePath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
 	var stderr bytes.Buffer
 	var stdOut bytes.Buffer
 
@@ -242,17 +261,9 @@ func (ws *WorkerService) presignAndEnqueueResult(key string, sessionId string) {
 		ws.log.Error("failed to presign the video url", "err", err)
 		return
 	}
-	updateMsg := events.Message{
-		Type:      events.MessageTypeVideoUpdate,
-		SessionId: sessionId,
-		Status:    events.MessageStatusSuccess,
-		Content:   req.URL,
-		Details: map[string]any{
-			"header": req.SignedHeader,
-		},
-	}
+	e := events.NewCompileSuccess(sessionId, req.URL)
 
-	bytes, err := json.Marshal(updateMsg)
+	bytes, err := json.Marshal(e)
 	if err != nil {
 		ws.log.Error("failed to marshal message body", "err", err)
 		return

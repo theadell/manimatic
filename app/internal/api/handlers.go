@@ -37,54 +37,30 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx := context.Background()
 		result, err := a.manimService.GenerateScript(ctx, req.Prompt, a.config.EnableModeration)
-		var msg events.Message
+		var msg events.Event
 		if err != nil {
 			a.logger.Error("failed to generate script", "error", err)
-			msg = events.Message{
-				Type:      events.MessageTypeScriptUpdate,
-				Status:    events.MessageStatusError,
-				SessionId: sessionID,
-				Content: map[string]any{
-					"message": "Failed to generate script",
-					"details": map[string]any{
-						"reason": err.Error(),
-					},
-				},
-			}
+			msg = events.NewGenerateError(sessionID, "failed to generate script", err.Error(), "openai-4o")
 			_ = a.MsgRouter.SendMessage(msg)
 			return
 		}
 		if !result.ValidInput || result.Code == "" {
 			a.logger.Info("generated script flagged as invalid or empty", "prompt", req.Prompt)
-			msg = events.Message{
-				Type:      events.MessageTypeScriptUpdate,
-				Status:    events.MessageStatusError,
-				SessionId: sessionID,
-				Content: map[string]any{
-					"message": "failed to generate scene for the given prompt",
-					"details": map[string]any{
-						"reason": result.Warnings,
-					},
-				},
-			}
+			msg = events.NewGenerateError(sessionID, "failed to generate scene for the given prompt", result.Warnings, "openai-4o")
 			_ = a.MsgRouter.SendMessage(msg)
 			return
 		}
 
-		msg = events.Message{
-			Type:      events.MessageTypeScriptUpdate,
-			SessionId: sessionID,
-			Status:    events.MessageStatusSuccess,
-			Content:   result.Code,
-		}
+		clientUpdate := events.NewGenerateSuccess(sessionID, result.Code)
+		workerTask := events.NewCompileRequest(sessionID, result.Code)
 		a.logger.Info("generated manim script", "session_id", sessionID)
 		go func() {
-			err := a.queueMgr.EnqeueMsg(context.TODO(), &msg)
+			err := a.queueMgr.EnqeueMsg(context.TODO(), &workerTask)
 			if err != nil {
 				slog.Error("failed to enqueue message", "error", err, "message", msg)
 			}
 		}()
-		err = a.MsgRouter.SendMessage(msg)
+		err = a.MsgRouter.SendMessage(clientUpdate)
 		if err != nil {
 			a.logger.Error("failed to send message to client channel", "session_id", sessionID, "error", err)
 		}
@@ -108,7 +84,7 @@ func (a *App) handleCompile(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 	go func() {
-		msg := events.Message{Type: events.MessageTypeScriptUpdate, Content: req.Script, SessionId: sessionID}
+		msg := events.NewCompileRequest(sessionID, req.Script)
 		err := a.queueMgr.EnqeueMsg(context.TODO(), &msg)
 		if err != nil {
 			slog.Error("failed to enqueue message", "error", err, "message", msg)
