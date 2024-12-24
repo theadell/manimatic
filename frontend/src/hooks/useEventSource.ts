@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 import * as monaco from 'monaco-editor';
-import { MessageType } from '../types/types';
+import {
+  Event,
+  EventKind,
+  CompileSuccess,
+  GenerateSuccess,
+} from '../types/types';
 
 export const useEventSource = ({
   apiBaseUrl,
@@ -36,15 +41,15 @@ export const useEventSource = ({
         const eventSource = new EventSource(`${apiBaseUrl}/events`, { withCredentials: true });
 
         eventSource.onmessage = (event) => {
-          const message: MessageType = JSON.parse(event.data);
+          const message: Event<EventKind> = JSON.parse(event.data);
 
           if (generationTimeoutRef.current) {
             clearTimeout(generationTimeoutRef.current);
           }
 
-          switch (message.type) {
-            case 'script': {
-              const receivedScript = message.content;
+          switch (message.kind) {
+            case 'generate_succeeded': {
+              const receivedScript = (message.data as GenerateSuccess).script;
               onScript(receivedScript);
               if (editorRef.current) {
                 editorRef.current.setValue(receivedScript);
@@ -52,10 +57,12 @@ export const useEventSource = ({
               setIsScriptLoading(false);
               break;
             }
-            case 'video':
-              onVideo(message.content);
+            case 'compile_succeeded': {
+              const msg = message.data as CompileSuccess
+              onVideo(msg.video_url);
               setIsVideoLoading(false);
               break;
+            }
           }
         };
 

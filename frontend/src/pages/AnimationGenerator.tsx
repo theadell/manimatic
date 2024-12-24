@@ -5,7 +5,7 @@ import { createAppTheme } from '../theme/theme';
 import { useEventSource } from '../hooks/useEventSource';
 import { PromptInput } from '../components/PromptInput';
 import { useFeatures } from '../hooks/useFeatures';
-import { LoadingSkeleton } from '../components/LoadingSkeleton';
+import { ContentPreview } from '../components/ContentPreview';
 import { Layout } from '../components/Layout';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 
@@ -158,7 +158,7 @@ function AnimationGenerator() {
         onErrorClose={() => setError(null)}
       >
         <Box sx={{ flex: 1 }}>
-          <LoadingSkeleton
+          <ContentPreview
             isVideoLoading={isVideoLoading}
             isScriptLoading={isScriptLoading}
             isCompiling={isCompiling}

@@ -6,7 +6,7 @@ import * as monaco from 'monaco-editor';
 
 
 
-type LoadingSkeletonProps = {
+type ContentPreviewProps = {
   isVideoLoading: boolean;
   isScriptLoading: boolean;
   isCompiling: boolean;
@@ -19,7 +19,7 @@ type LoadingSkeletonProps = {
   onCompileClick: () => void;
 }
 
-export const LoadingSkeleton = ({
+export const ContentPreview = ({
   isVideoLoading,
   isScriptLoading,
   isCompiling,
@@ -30,7 +30,7 @@ export const LoadingSkeleton = ({
   onScriptChange,
   onEditorMount,
   onCompileClick
-}: LoadingSkeletonProps) => {
+}: ContentPreviewProps) => {
 
   const shouldRender = isVideoLoading || isScriptLoading || videoUrl || script;
   if (!shouldRender) {
