@@ -14,6 +14,6 @@ FROM manimcommunity/manim:v0.18.1
 
 COPY --from=build-stage /app /usr/local/bin/app
 
-WORKDIR /manim
+WORKDIR /manim/worker 
 
 CMD ["/usr/local/bin/app"]

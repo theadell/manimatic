@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"manimatic/internal/worker/manimexec/security"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"syscall"
 	"time"
 
@@ -22,18 +22,22 @@ type ExecutionResult struct {
 }
 
 type Executor struct {
-	baseDir  string
-	security SecurityConfig
-	quality  Quality
-	timeout  time.Duration
+	baseDir   string
+	quality   Quality
+	timeout   time.Duration
+	workerUID uint32 // TODO
+	workerGID uint32 // TODO
+	validator *security.Validator
 }
 
-func NewExecutor(baseDir string, opts ...Option) *Executor {
+func NewExecutor(opts ...Option) *Executor {
 	e := &Executor{
-		baseDir:  baseDir,
-		security: defaultSecurityConfig,
-		quality:  QualityLow,
-		timeout:  DefaultTimeout,
+		baseDir:   defaultBaseDir,
+		quality:   QualityLow,
+		timeout:   DefaultTimeout,
+		workerUID: 10001,
+		workerGID: 10001,
+		validator: security.NewValidator(nil),
 	}
 
 	for _, opt := range opts {
@@ -57,11 +61,23 @@ func WithTimeout(t time.Duration) Option {
 	}
 }
 
-func WithSecurityConfig(sc SecurityConfig) Option {
+func WithBaseDir(dir string) Option {
 	return func(e *Executor) {
-		e.security = sc
+		e.baseDir = dir
 	}
 }
+
+func WithWorkerUID(uid uint32) Option {
+	return func(e *Executor) {
+		e.workerUID = uid
+	}
+}
+func WithWorkerGID(gid uint32) Option {
+	return func(e *Executor) {
+		e.workerUID = gid
+	}
+}
+
 func (e *Executor) ExecuteScript(ctx context.Context, script string, sessionID string) (*ExecutionResult, error) {
 	// Validate script size
 	if len(script) > MaxScriptSize {
@@ -72,8 +88,12 @@ func (e *Executor) ExecuteScript(ctx context.Context, script string, sessionID s
 	}
 
 	// Validate script security
-	if err := e.validateScript(script); err != nil {
-		return nil, newSecurityError("Script contains forbidden patterns or imports", err)
+	if err := e.validator.ValidateScript(script); err != nil {
+		if valErr, ok := err.(*security.ValidationError); ok {
+			message := fmt.Sprintf("This code cannot be executed. %s", valErr.Error())
+			return nil, newSecurityError(message, err)
+		}
+		return nil, newSecurityError("This code cannot be executed.", err)
 	}
 
 	// Create working directory
@@ -120,28 +140,6 @@ func (e *Executor) ExecuteScript(ctx context.Context, script string, sessionID s
 	return result, nil
 }
 
-func (e *Executor) validateScript(script string) error {
-
-	imports, err := extractImports(script)
-	if err != nil {
-		return fmt.Errorf("import validation failed: %w", err)
-	}
-
-	for _, imp := range imports {
-		if !slices.Contains(e.security.AllowedImports, imp) {
-			return fmt.Errorf("import not allowed: %s", imp)
-		}
-	}
-
-	for _, pattern := range e.security.ForbiddenPatterns {
-		if pattern.MatchString(script) {
-			return fmt.Errorf("forbidden pattern detected: %s", pattern.String())
-		}
-	}
-
-	return nil
-}
-
 func (e *Executor) writeScript(workDir, script string) (string, error) {
 	scriptFile, err := os.CreateTemp(workDir, ScriptFilePrefix+"*.py")
 	if err != nil {
@@ -159,6 +157,8 @@ func (e *Executor) writeScript(workDir, script string) (string, error) {
 func (e *Executor) runManimProcess(ctx context.Context, scriptPath, outputPath string) (*ExecutionResult, error) {
 	// Prepare command
 	cmd := exec.CommandContext(ctx, "manim",
+		"render",
+		"--media_dir", "/manim/worker",
 		string(e.quality),
 		"-o", outputPath,
 		scriptPath,

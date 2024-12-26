@@ -75,7 +75,7 @@ func NewWorkerService(cfg *config.Config) (*WorkerService, error) {
 		workerPool:    workerPool,
 		cancelContext: ctx,
 		cancelFunc:    cancel,
-		executer:      manimexec.NewExecutor(""),
+		executer:      manimexec.NewExecutor(),
 	}, nil
 }
 
@@ -166,10 +166,16 @@ func (ws *WorkerService) processTask(task Task) error {
 				compileErr.Stderr,
 				compileErr.Line,
 			)
+			ws.log.Error("failed to execute manim script", "error", execErr.Error(), "cause", execErr.Cause.Error(), "stdout", execErr.Stdout)
 			// Enqueue error event
 			if err := ws.enqueueEvent(errorEvent); err != nil {
 				ws.log.Error("Failed to enqueue error event", "error", err)
 			}
+			go ws.sqsClient.DeleteMessage(ws.cancelContext, &sqs.DeleteMessageInput{
+				QueueUrl:      aws.String(ws.config.TaskQueueURL),
+				ReceiptHandle: task.Message.ReceiptHandle,
+			})
+
 			return nil // Task processed successfully, even though compilation failed
 		}
 		return fmt.Errorf("unexpected error type: %v", err)

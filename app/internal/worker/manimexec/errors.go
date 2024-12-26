@@ -3,6 +3,7 @@ package manimexec
 import (
 	"fmt"
 	"manimatic/internal/api/events"
+	"manimatic/internal/worker/manimexec/security"
 )
 
 // ExecutionError represents a structured error from manim execution
@@ -55,10 +56,15 @@ func (e *ExecutionError) Unwrap() error {
 
 // Helper functions to create specific error types
 func newSecurityError(message string, cause error) *ExecutionError {
+	var line int
+	if valErr, ok := cause.(*security.ValidationError); ok {
+		line = valErr.Line
+	}
 	return &ExecutionError{
 		Kind:    ErrorKindSecurity,
 		Message: message,
 		Cause:   cause,
+		Line:    line,
 	}
 }
 
