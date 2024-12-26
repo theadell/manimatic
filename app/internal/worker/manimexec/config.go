@@ -45,6 +45,7 @@ var defaultSecurityConfig = SecurityConfig{
 		"fractions",
 	},
 	ForbiddenPatterns: []*regexp.Regexp{
+		// general
 		regexp.MustCompile(`(?i)import\s+os`),
 		regexp.MustCompile(`(?i)import\s+sys`),
 		regexp.MustCompile(`(?i)import\s+subprocess`),
@@ -56,5 +57,18 @@ var defaultSecurityConfig = SecurityConfig{
 		regexp.MustCompile(`(?i)file\(`),
 		regexp.MustCompile(`(?i)glob\(`),
 		regexp.MustCompile(`(?i)importlib`),
+
+		// Module introspection (applicable to any allowed module)
+		regexp.MustCompile(`(?i)__class__`),
+		regexp.MustCompile(`(?i)__bases__`),
+		regexp.MustCompile(`(?i)__subclasses__`),
+		regexp.MustCompile(`(?i)__globals__`),
+		regexp.MustCompile(`(?i)__builtins__`),
+		regexp.MustCompile(`(?i)__dict__`),
+
+		// Dangerous operations from allowed modules
+		regexp.MustCompile(`(?i)numpy\.load\(`),
+		regexp.MustCompile(`(?i)numpy\.save\(`),
+		regexp.MustCompile(`(?i)sympy\.preview\(`),
 	},
 }

@@ -16,9 +16,38 @@ func TestExtractImports(t *testing.T) {
 		wantErr  bool
 	}{
 		{
+			name: "dynamic import using __import__",
+			script: `x = __import__('os')
+                     import numpy`,
+			wantErr: true, // Should error due to __import__
+		},
+		{
+			name:    "import with null bytes",
+			script:  "import os\x00\nimport math",
+			wantErr: true, // Should error on null bytes
+		},
+		{
+			name: "import via locals/globals",
+			script: `locals()['__import__']('os')
+                     import math`,
+			wantErr: true, // Should error due to dangerous builtin access
+		},
+		{
+			name:     "nested but valid imports with tabs",
+			script:   "def foo():\n\timport numpy\nimport math",
+			expected: []string{"math", "numpy"},
+		},
+		{
 			name:     "simple import",
 			script:   `import manim`,
 			expected: []string{"manim"},
+		},
+		{
+			name: "import via string concatenation",
+			script: `x = 'o' + 's'
+                     y = __import__(x)
+                     import math`,
+			wantErr: true, // Should error due to __import__
 		},
 		{
 			name:     "multiple imports on one line",

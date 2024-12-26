@@ -277,3 +277,90 @@ func TestExecutor_writeScript(t *testing.T) {
 		t.Errorf("Script content = %v, want %v", string(content), script)
 	}
 }
+
+func TestValidateScriptSecurity(t *testing.T) {
+	tests := []struct {
+		name       string
+		script     string
+		wantErr    bool
+		errorMatch string
+	}{
+		// File System Access via Allowed Modules
+		{
+			name: "numpy load file access",
+			script: `import numpy
+array = numpy.load("/etc/passwd")`,
+			wantErr: true,
+		},
+		{
+			name: "numpy save file write",
+			script: `import numpy
+numpy.save('/etc/malicious', [1,2,3])`,
+			wantErr: true,
+		},
+		{
+			name: "sympy file access via preview",
+			script: `from sympy import preview
+preview('x', viewer='cat /etc/passwd')`,
+			wantErr: true,
+		},
+
+		// Code Execution via Allowed Modules
+		{
+			name: "attribute chain to get builtins",
+			script: `import math
+x = math.__class__.__bases__[0].__subclasses__()`,
+			wantErr: true,
+		},
+		{
+			name: "globals access through module",
+			script: `import numpy
+globals = numpy.__globals__`,
+			wantErr: true,
+		},
+		{
+			name: "builtin override attempt",
+			script: `import math
+math.__builtins__ = {'exec': exec}`,
+			wantErr: true,
+		},
+
+		// Valid Manim Usage
+		{
+			name: "valid manim scene",
+			script: `from manim import Scene, Circle
+class MyScene(Scene):
+    def construct(self):
+        circle = Circle()
+        self.play(Create(circle))`,
+			wantErr: false,
+		},
+		{
+			name: "valid numpy math",
+			script: `import numpy as np
+x = np.array([1, 2, 3])
+y = np.mean(x)`,
+			wantErr: false,
+		},
+	}
+
+	executor := NewExecutor("")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := executor.validateScript(tt.script)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("validateScript() error = nil, wantErr = true")
+					return
+				}
+				if tt.errorMatch != "" && !strings.Contains(err.Error(), tt.errorMatch) {
+					t.Errorf("validateScript() error = %v, want error containing %v", err, tt.errorMatch)
+				}
+			} else if err != nil {
+				t.Errorf("validateScript() error = %v, wantErr = false", err)
+			}
+		})
+	}
+}
