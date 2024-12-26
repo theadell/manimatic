@@ -8,6 +8,7 @@ import { useFeatures } from '../hooks/useFeatures';
 import { ContentPreview } from '../components/ContentPreview';
 import { Layout } from '../components/Layout';
 import { ThemeProvider, CssBaseline } from '@mui/material';
+import { CompileError } from '../types/types';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 const GENERATION_TIMEOUT = 30_000;
@@ -15,14 +16,15 @@ const GENERATION_TIMEOUT = 30_000;
 function AnimationGenerator() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [prompt, setPrompt] = useState('');
-  const [script, setScript] = useState(``);
+  const [script, setScript] = useState(`# your code here`);
   const [editedScript, setEditedScript] = useState('');
-  const [videoUrl, setVideoUrl] = useState('');
+  const [animationUrl, setAnimationUrl] = useState('');
   const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [isScriptLoading, setIsScriptLoading] = useState(false);
   const [isCompiling, setIsCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+  const [compilationError, setCompilationError] = useState<CompileError | undefined>();
+
   const generationTimeoutRef = useRef<number | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
@@ -54,8 +56,9 @@ function AnimationGenerator() {
     setIsVideoLoading(true);
     setScript('');
     setEditedScript('');
-    setVideoUrl('');
+    setAnimationUrl('');
     setError(null);
+    setCompilationError(undefined)
 
     generationTimeoutRef.current = setTimeout(resetGeneration, GENERATION_TIMEOUT);
 
@@ -91,15 +94,15 @@ function AnimationGenerator() {
   }, [script, editedScript]);
 
   const handleDownloadVideo = useCallback(() => {
-    if (videoUrl) {
+    if (animationUrl) {
       const link = document.createElement('a');
-      link.href = videoUrl;
+      link.href = animationUrl;
       link.download = 'animation.mp4';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     }
-  }, [videoUrl]);
+  }, [animationUrl]);
 
   const handleCompileClick = useCallback(async () => {
     if (!isFeatureEnabled('user-compile')) {
@@ -109,6 +112,7 @@ function AnimationGenerator() {
 
     setIsCompiling(true);
     setIsVideoLoading(true);
+    setCompilationError(undefined)
 
     try {
       const response = await fetch(`${apiBaseUrl}/compile`, {
@@ -137,11 +141,17 @@ function AnimationGenerator() {
       setPrompt('');
     }, []),
     onVideo: useCallback((url: string) => {
-      setVideoUrl(url);
+      setAnimationUrl(url);
       setIsVideoLoading(false);
       setIsCompiling(false);
+      setCompilationError(undefined)
     }, []),
     onError: setError,
+    onCompileError: useCallback((error: CompileError) => {
+      setIsCompiling(false)
+      setIsVideoLoading(false);
+      setCompilationError(error)
+    }, []),
     generationTimeoutRef,
     editorRef,
     setIsScriptLoading,
@@ -162,8 +172,9 @@ function AnimationGenerator() {
             isVideoLoading={isVideoLoading}
             isScriptLoading={isScriptLoading}
             isCompiling={isCompiling}
-            videoUrl={videoUrl}
+            animationUrl={animationUrl}
             script={script}
+            compilationError={compilationError}
             onDownload={handleDownloadVideo}
             onCopy={handleCopyScript}
             onScriptChange={(value) => setEditedScript(value || '')}

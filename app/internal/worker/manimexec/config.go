@@ -25,9 +25,7 @@ const (
 var (
 	ErrScriptTooLarge   = errors.New("script exceeds maximum size limit")
 	ErrExecutionTimeout = errors.New("script execution timed out")
-	ErrInvalidContent   = errors.New("invalid script content")
 	ErrOutputTooLarge   = errors.New("output exceeds maximum size")
-	ErrProcessKilled    = errors.New("process was killed")
 )
 
 type SecurityConfig struct {

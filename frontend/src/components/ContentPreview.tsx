@@ -1,8 +1,9 @@
 import { Grid, Typography, Skeleton, Box } from '@mui/material';
 import { AnimatePresence } from 'framer-motion';
-import { VideoPreview } from './VideoPreview';
+import { AnimationPreview } from './AnimationPreview';
 import { ScriptEditor } from './ScriptEditor';
 import * as monaco from 'monaco-editor';
+import { CompileError } from '../types/types';
 
 
 
@@ -10,8 +11,9 @@ type ContentPreviewProps = {
   isVideoLoading: boolean;
   isScriptLoading: boolean;
   isCompiling: boolean;
-  videoUrl: string;
+  animationUrl: string;
   script: string;
+  compilationError?: CompileError;
   onDownload: () => void;
   onCopy: () => void;
   onScriptChange: (value: string | undefined) => void;
@@ -23,8 +25,9 @@ export const ContentPreview = ({
   isVideoLoading,
   isScriptLoading,
   isCompiling,
-  videoUrl,
+  animationUrl: videoUrl,
   script,
+  compilationError,
   onDownload,
   onCopy,
   onScriptChange,
@@ -66,8 +69,8 @@ export const ContentPreview = ({
           ) : (
             <AnimatePresence>
               {videoUrl && (
-                <VideoPreview
-                  videoUrl={videoUrl}
+                <AnimationPreview
+                  url={videoUrl}
                   onDownload={onDownload}
                 />
               )}
@@ -109,6 +112,7 @@ export const ContentPreview = ({
               {script && (
                 <ScriptEditor
                   script={script}
+                  error={compilationError}
                   onCopy={onCopy}
                   onScriptChange={onScriptChange}
                   onEditorMount={onEditorMount}

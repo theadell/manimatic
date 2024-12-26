@@ -4,9 +4,12 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import { motion } from 'framer-motion';
 import Editor from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
+import { CompileError } from '../types/types';
+import { ErrorDisplay } from './ErrorDisplay';
 
 interface ScriptEditorProps {
   script: string;
+  error?: CompileError,
   isCompiling: boolean;
   onCopy: () => void;
   onScriptChange: (value: string | undefined) => void;
@@ -17,6 +20,7 @@ interface ScriptEditorProps {
 
 export const ScriptEditor = ({
   script,
+  error,
   isCompiling,
   onCopy,
   onScriptChange,
@@ -62,7 +66,7 @@ export const ScriptEditor = ({
             onClick={onCopy}
             title="Copy Script"
             size="small"
-            sx={{ 
+            sx={{
               backgroundColor: 'action.hover',
               '&:hover': { backgroundColor: 'action.selected' }
             }}
@@ -75,7 +79,7 @@ export const ScriptEditor = ({
             size="small"
             onClick={onCompileClick}
             disabled={isCompiling}
-            sx={{ 
+            sx={{
               boxShadow: 2,
               '&:hover': { boxShadow: 4 },
               minWidth: '100px'
@@ -120,6 +124,8 @@ export const ScriptEditor = ({
           }}
         />
       </Box>
+      {error && <ErrorDisplay error={error} />}
+
       {compiledResult && (
         <Box
           sx={{

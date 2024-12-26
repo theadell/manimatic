@@ -65,19 +65,22 @@ func WithSecurityConfig(sc SecurityConfig) Option {
 func (e *Executor) ExecuteScript(ctx context.Context, script string, sessionID string) (*ExecutionResult, error) {
 	// Validate script size
 	if len(script) > MaxScriptSize {
-		return nil, fmt.Errorf("%w: size %d exceeds limit %d", ErrScriptTooLarge, len(script), MaxScriptSize)
+		return nil, newSizeError(
+			fmt.Sprintf("Script size %d exceeds limit %d", len(script), MaxScriptSize),
+			ErrScriptTooLarge,
+		)
 	}
 
 	// Validate script security
 	if err := e.validateScript(script); err != nil {
-		return nil, fmt.Errorf("security validation failed: %w", err)
+		return nil, newSecurityError("Script contains forbidden patterns or imports", err)
 	}
 
 	// Create working directory
 	compilationID := uuid.New().String()
 	workDir, err := os.MkdirTemp(e.baseDir, fmt.Sprintf("%s_%s", sessionID, compilationID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create working directory: %w", err)
+		return nil, newSystemError("Failed to create working directory", err)
 	}
 
 	// Create cleanup function
@@ -100,7 +103,7 @@ func (e *Executor) ExecuteScript(ctx context.Context, script string, sessionID s
 	// Write script to file
 	scriptPath, err := e.writeScript(workDir, script)
 	if err != nil {
-		return nil, err
+		return nil, newSystemError("Failed to write script to file", err)
 	}
 
 	// Prepare output path
@@ -173,7 +176,7 @@ func (e *Executor) runManimProcess(ctx context.Context, scriptPath, outputPath s
 
 	// Start the process
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start process: %w", err)
+		return nil, newSystemError("Failed to start manim process", err)
 	}
 
 	// Create a channel for the command completion
@@ -189,24 +192,57 @@ func (e *Executor) runManimProcess(ctx context.Context, scriptPath, outputPath s
 		// Kill the process group
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		<-done // Wait for the process to be killed
-		return nil, ErrExecutionTimeout
+		return nil, newTimeoutError()
 
 	case err := <-done:
 		if err != nil {
-			return nil, fmt.Errorf("execution failed: %w\nStderr: %s", err, stderr.String())
+			return nil, newCompilationError(
+				"Manim compilation failed",
+				stdout.String(),
+				stderr.String(),
+				err,
+			)
 		}
 
 		// Check output size
 		if stdout.Len() > MaxOutputSize || stderr.Len() > MaxOutputSize {
-			return nil, ErrOutputTooLarge
+			return nil, newSizeError(
+				fmt.Sprintf("Output size exceeds limit of %d bytes", MaxOutputSize),
+				ErrOutputTooLarge,
+			)
+		}
+
+		// Verify output file exists and is accessible
+		// Corner case: when no animation is played, a png is generated
+		path := outputPath
+		if err := checkOutputFile(outputPath); err != nil {
+			pngPath := outputPath + ".png"
+			if err := checkOutputFile(pngPath); err != nil {
+				return nil, newCompilationError(
+					"Manim compilation completed but no output file was created",
+					stdout.String(),
+					stderr.String(),
+					fmt.Errorf("neither video nor image output found"),
+				)
+			}
+			path = pngPath
 		}
 
 		result = &ExecutionResult{
-			OutputPath: outputPath,
+			OutputPath: path,
 			Stdout:     stdout.String(),
 			Stderr:     stderr.String(),
 		}
 	}
 
 	return result, nil
+}
+func checkOutputFile(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("file does not exist: %w", err)
+		}
+		return fmt.Errorf("cannot access file: %w", err)
+	}
+	return nil
 }

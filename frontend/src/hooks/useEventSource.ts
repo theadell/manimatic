@@ -5,6 +5,8 @@ import {
   EventKind,
   CompileSuccess,
   GenerateSuccess,
+  CompileError,
+  GenerateError,
 } from '../types/types';
 
 export const useEventSource = ({
@@ -12,6 +14,7 @@ export const useEventSource = ({
   onScript,
   onVideo,
   onError,
+  onCompileError,
   generationTimeoutRef,
   editorRef,
   setIsVideoLoading,
@@ -21,12 +24,17 @@ export const useEventSource = ({
   onScript: (script: string) => void;
   onVideo: (url: string) => void;
   onError: (error: string) => void;
+  onCompileError?: (error: CompileError) => void;
   generationTimeoutRef: React.MutableRefObject<number | null>;
   editorRef: React.MutableRefObject<monaco.editor.IStandaloneCodeEditor | null>;
   setIsVideoLoading: (state: boolean) => void;
   setIsScriptLoading: (state: boolean) => void;
 }) => {
   useEffect(() => {
+    const resetState = () => {
+      setIsScriptLoading(false)
+      setIsVideoLoading(false)
+    }
     const initializeEventSource = async () => {
       try {
         const healthzResponse = await fetch(`${apiBaseUrl}/healthz`, {
@@ -60,17 +68,31 @@ export const useEventSource = ({
             case 'compile_succeeded': {
               const msg = message.data as CompileSuccess
               onVideo(msg.video_url);
-              setIsVideoLoading(false);
+              resetState()
               break;
             }
+            case 'compile_failed': {
+              const error = message.data as CompileError;
+              if (onCompileError) {
+                onCompileError(error);
+              }
+              resetState()
+              break;
+            }
+            case 'generate_failed': {
+              const error = message.data as GenerateError;
+              onError(`Generation failed: ${error.message}${error.details ? `\n${error.details}` : ''}`);
+              resetState()
+              break;
+            }
+            
           }
         };
 
         eventSource.onerror = (error) => {
           console.error('EventSource failed:', error);
           eventSource.close();
-          setIsScriptLoading(false)
-          setIsVideoLoading(false)
+          resetState()
           onError('Connection error. Please refresh and try again.');
         };
 

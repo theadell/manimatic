@@ -156,7 +156,24 @@ func (ws *WorkerService) processTask(task Task) error {
 
 	res, err := ws.executer.ExecuteScript(context.TODO(), compileRequest.Script, event.SessionID)
 	if err != nil {
-		return fmt.Errorf("compilation failed: %v", err)
+		var execErr *manimexec.ExecutionError
+		if errors.As(err, &execErr) {
+			compileErr := execErr.ToCompileError()
+			errorEvent := events.NewCompileError(
+				event.SessionID,
+				compileErr.Message,
+				compileErr.Stdout,
+				compileErr.Stderr,
+				compileErr.Line,
+			)
+			// Enqueue error event
+			if err := ws.enqueueEvent(errorEvent); err != nil {
+				ws.log.Error("Failed to enqueue error event", "error", err)
+			}
+			return nil // Task processed successfully, even though compilation failed
+		}
+		return fmt.Errorf("unexpected error type: %v", err)
+
 	}
 	outputPath, taskDir := res.OutputPath, res.WorkingDir
 	defer os.RemoveAll(taskDir)
@@ -188,7 +205,17 @@ func (ws *WorkerService) uploadVideoToS3(outputPath string, message events.Event
 	}
 	defer videoFile.Close()
 
-	s3Key := fmt.Sprintf("manim_videos/%s/%d.mp4", message.SessionID, time.Now().UnixNano())
+	ext := filepath.Ext(outputPath)
+	if ext == "" {
+		return "", fmt.Errorf("file has no extension: %s", outputPath)
+	}
+
+	s3Key := fmt.Sprintf("manim_outputs/%s/%d%s",
+		message.SessionID,
+		time.Now().UnixNano(),
+		ext,
+	)
+
 	_, err = ws.s3Uploader.Upload(ws.cancelContext, &s3.PutObjectInput{
 		Bucket: aws.String(ws.config.VideoBucketName),
 		Key:    aws.String(s3Key),
@@ -284,4 +311,17 @@ func (ws *WorkerService) handleReceiveMessageError(err error) {
 		slog.Error("Queue does not exist", "URL", ws.config.TaskQueueURL, "Base endpoint", ws.sqsClient.Options().BaseEndpoint)
 		os.Exit(1)
 	}
+}
+
+func (ws *WorkerService) enqueueEvent(event events.Event) error {
+	bytes, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
+
+	_, err = ws.sqsClient.SendMessage(ws.cancelContext, &sqs.SendMessageInput{
+		QueueUrl:    aws.String(ws.config.ResultQueueURL),
+		MessageBody: aws.String(string(bytes)),
+	})
+	return err
 }

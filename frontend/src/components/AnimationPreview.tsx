@@ -1,8 +1,35 @@
 import { Box, IconButton, Paper, Typography } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import { motion } from 'framer-motion';
+import { VIDEO_EXTENSIONS, VIDEO_REGEX } from '../lib/consts';
 
-export const VideoPreview = ({ videoUrl, onDownload }: { videoUrl: string; onDownload: () => void }) => (
+type PreviewProps = {
+  url: string;
+  onDownload: () => void;
+};
+
+function isVideoURL(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname.toLowerCase();
+
+    return VIDEO_EXTENSIONS.some(ext => pathname.endsWith(ext));
+  } catch (e) {
+    console.error('Invalid URL:', e);
+
+    // Fallback to regex check
+    return VIDEO_REGEX.test(url);
+  }
+}
+
+
+
+
+export const AnimationPreview = ({ url, onDownload }: PreviewProps) => {
+
+  const isVideo = isVideoURL(url);
+
+  return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -32,12 +59,12 @@ export const VideoPreview = ({ videoUrl, onDownload }: { videoUrl: string; onDow
           borderColor: 'divider'
         }}>
           <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
-            Generated Animation
+            {isVideo ? 'Generated Animation' : 'Generated Image'}
           </Typography>
           <IconButton
             color="primary"
             onClick={onDownload}
-            title="Download Video"
+            title={`Download ${isVideo ? 'Video' : 'Image'}`}
             size="small"
             sx={{ 
               backgroundColor: 'action.hover',
@@ -57,20 +84,35 @@ export const VideoPreview = ({ videoUrl, onDownload }: { videoUrl: string; onDow
             backgroundColor: 'background.default'
           }}
         >
-          <video
-            src={videoUrl}
-            controls
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain'
-            }}
-          />
+          {isVideo ? (
+            <video
+              src={url}
+              controls
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain'
+              }}
+            />
+          ) : (
+            <img
+              src={url}
+              alt="Generated visualization"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain'
+              }}
+            />
+          )}
         </Box>
       </Paper>
     </motion.div>
   );
-  
+};
