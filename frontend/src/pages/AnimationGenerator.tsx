@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Box } from '@mui/material';
 import * as monaco from 'monaco-editor';
 import { createAppTheme } from '../theme/theme';
@@ -24,10 +24,34 @@ function AnimationGenerator() {
   const [isCompiling, setIsCompiling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [compilationError, setCompilationError] = useState<CompileError | undefined>();
+  const [models, setModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
 
   const generationTimeoutRef = useRef<number | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/models`);
+        const data = await response.json();
+        setModels(data.models);
+        if (data.default_model) {
+          setSelectedModel(data.default_model);
+        }
+      } catch (error) {
+        console.error('Failed to fetch models:', error);
+        setError('Failed to load models');
+      } finally {
+        setIsLoadingModels(false);
+      }
+    };
+
+    fetchModels();
+  }, []);
+
+  
   const theme = useMemo(() => createAppTheme(isDarkMode ? 'dark' : 'light'), [isDarkMode]);
   const { isFeatureEnabled } = useFeatures(apiBaseUrl);
 
@@ -52,6 +76,12 @@ function AnimationGenerator() {
       return;
     }
 
+    if (!selectedModel) {
+      setError('Please select a model');
+      return;
+    }
+
+
     setIsScriptLoading(true);
     setIsVideoLoading(true);
     setScript('');
@@ -66,7 +96,10 @@ function AnimationGenerator() {
       const response = await fetch(`${apiBaseUrl}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          prompt, 
+          model: selectedModel
+        }),
         credentials: 'include'
       });
 
@@ -79,7 +112,7 @@ function AnimationGenerator() {
       setIsVideoLoading(false);
       setIsScriptLoading(false);
     }
-  }, [prompt, resetGeneration]);
+  }, [prompt, selectedModel, resetGeneration]);
 
   const handleCopyScript = useCallback(() => {
     const scriptToCopy = editedScript || script;
@@ -188,7 +221,12 @@ function AnimationGenerator() {
           isGenerating={isVideoLoading || isScriptLoading}
           onChange={setPrompt}
           onSubmit={handleGenerate}
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          isLoadingModels={isLoadingModels}
         />
+
       </Layout>
     </ThemeProvider>
   );

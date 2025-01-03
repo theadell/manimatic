@@ -49,9 +49,11 @@ services:
     container_name: manimatic-api
     secrets:
       - openai_api_key 
+      - xai_api_key
     environment:
       <<: [*aws-localstack-config, *aws-credentials, *api-features]
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      XAI_API_KEY_FILE: /run/secrets/xai_api_key
     ports:
       - "127.0.0.1:8080:8080"
   worker:
@@ -69,3 +71,6 @@ services:
 secrets:
   openai_api_key:
     file: openai_api_key.secret
+  xai_api_key:
+    file: xai_api_key.secret
+

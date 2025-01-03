@@ -17,9 +17,9 @@ const (
 
 func NewS3Client(cfg config.Config, awsCfg aws.Config) *s3.Client {
 	var opts func(*s3.Options)
-	if cfg.AWSEndpointURL != "" {
+	if cfg.AWS.EndpointURL != "" {
 		opts = func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(cfg.AWSEndpointURL)
+			o.BaseEndpoint = aws.String(cfg.AWS.EndpointURL)
 			o.Region = *aws.String(awsDefaultRegion)
 			o.UsePathStyle = true
 		}
@@ -53,9 +53,9 @@ func (p *S3Presigner) PreSignGet(key string, expires int64) (*v4.PresignedHTTPRe
 
 func NewSQSClient(cfg config.Config, awsCfg aws.Config) *sqs.Client {
 	var opts func(*sqs.Options)
-	if cfg.AWSEndpointURL != "" {
+	if cfg.AWS.EndpointURL != "" {
 		opts = func(o *sqs.Options) {
-			o.BaseEndpoint = aws.String(cfg.AWSEndpointURL)
+			o.BaseEndpoint = aws.String(cfg.AWS.EndpointURL)
 			o.Region = *aws.String(awsDefaultRegion)
 		}
 	} else {

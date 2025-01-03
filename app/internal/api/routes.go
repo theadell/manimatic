@@ -20,10 +20,12 @@ func (a *App) setupRoutes() http.Handler {
 
 	mux.HandleFunc("POST /generate", a.HandleGenerate)
 	mux.HandleFunc("GET /events", a.sseHandler)
+	mux.HandleFunc("GET /models", a.modelsHandler)
+
 	mux.HandleFunc("GET /healthz", healthCheckHandler)
 	mux.HandleFunc("GET /features", a.featuresHandler)
 
-	if a.config.Features.IsEnabled(features.UserCompile) {
+	if a.config.Processing.Features.IsEnabled(features.UserCompile) {
 		mux.HandleFunc("POST /compile", a.handleCompile)
 	}
 

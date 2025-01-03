@@ -7,12 +7,14 @@ import (
 	"log/slog"
 	"manimatic/internal/api/events"
 	"manimatic/internal/api/middleware"
+	"manimatic/internal/llm"
 	"net/http"
 	"time"
 )
 
 type GenerateRequest struct {
 	Prompt string `json:"prompt"`
+	Model  string `json:"model"`
 }
 type CompileRequest struct {
 	Script string `json:"script"`
@@ -36,7 +38,7 @@ func (a *App) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		ctx := context.Background()
-		result, err := a.manimService.GenerateScript(ctx, req.Prompt, a.config.EnableModeration)
+		result, err := a.llmService.Generate(ctx, req.Prompt, req.Model)
 		var msg events.Event
 		if err != nil {
 			a.logger.Error("failed to generate script", "error", err)
@@ -150,5 +152,13 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) featuresHandler(w http.ResponseWriter, r *http.Request) {
-	WriteJSON(w, http.StatusOK, a.config.Features)
+	WriteJSON(w, http.StatusOK, a.config.Processing.Features)
+}
+
+func (a *App) modelsHandler(w http.ResponseWriter, _ *http.Request) {
+	response := llm.ModelsResponse{
+		Models:       a.llmService.AvailableModels(),
+		DefaultModel: a.llmService.DefaultModel(),
+	}
+	WriteJSON(w, http.StatusOK, response)
 }

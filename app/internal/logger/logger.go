@@ -9,10 +9,10 @@ import (
 func NewLogger(cfg *config.Config) *slog.Logger {
 	var handler slog.Handler
 	opts := &slog.HandlerOptions{
-		Level: cfg.LogLevel,
+		Level: cfg.Logging.Level,
 	}
 
-	switch cfg.LogFormat {
+	switch cfg.Logging.Format {
 	case "json":
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	default:

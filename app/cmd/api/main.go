@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"manimatic/internal/api"
-	"manimatic/internal/api/genmanim"
 	"manimatic/internal/awsutils"
 	"manimatic/internal/config"
+	"manimatic/internal/llm"
+	"manimatic/internal/llm/openai"
+	"manimatic/internal/llm/xai"
 	"manimatic/internal/logger"
 	"net/http"
 	"os"
@@ -24,15 +26,16 @@ func main() {
 		log.Fatalf("Error loading config %s \n", err.Error())
 	}
 	logger := logger.NewLogger(cfg)
-	logger.Info(cfg.Features.String())
-	manimService := genmanim.NewLLMManimService(cfg.OpenAIKey)
-
+	logger.Info(cfg.Processing.Features.String())
+	llmService := llm.NewService(string(openai.ChatModelGPT4o))
+	openai.RegisterWith(llmService, cfg.OpenAI.Key)
+	xai.RegisterWith(llmService, cfg.XAI.Key)
 	awsConfig, err := awsconfig.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		log.Fatal(err)
 	}
 	sqsClient := awsutils.NewSQSClient(*cfg, awsConfig)
-	api := api.New(cfg, logger, manimService, sqsClient)
+	api := api.New(cfg, logger, llmService, sqsClient)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -40,7 +43,7 @@ func main() {
 	api.StartMessageProcessor(ctx)
 
 	server := http.Server{
-		Addr:              fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Addr:              fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		Handler:           api,
 		ReadTimeout:       time.Second * 5,
 		ReadHeaderTimeout: time.Second * 2,
@@ -48,7 +51,7 @@ func main() {
 	}
 
 	go func() {
-		logger.Info(fmt.Sprintf("Server is running on port %d", cfg.Port))
+		logger.Info(fmt.Sprintf("Server is running on port %d", cfg.Server.Port))
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Server failed to start", "err", err.Error())
 			stop()

@@ -60,10 +60,10 @@ func NewWorkerService(cfg *config.Config) (*WorkerService, error) {
 
 	sqsClient := awsutils.NewSQSClient(*cfg, awsConfig)
 	s3Client := awsutils.NewS3Client(*cfg, awsConfig)
-	s3Presigner := awsutils.NewS3PreSigner(s3Client, cfg.VideoBucketName)
+	s3Presigner := awsutils.NewS3PreSigner(s3Client, cfg.AWS.VideoBucketName)
 	uploader := manager.NewUploader(s3Client)
 
-	workerPool := NewWorkerPool(cfg.MaxConcurrency, log)
+	workerPool := NewWorkerPool(cfg.Processing.MaxConcurrency, log)
 
 	return &WorkerService{
 		config:        cfg,
@@ -112,7 +112,7 @@ func (ws *WorkerService) Run() {
 
 func (ws *WorkerService) fetchAndSubmitMessage() {
 	result, err := ws.sqsClient.ReceiveMessage(ws.cancelContext, &sqs.ReceiveMessageInput{
-		QueueUrl:            aws.String(ws.config.TaskQueueURL),
+		QueueUrl:            aws.String(ws.config.AWS.TaskQueueURL),
 		MaxNumberOfMessages: 1,
 		WaitTimeSeconds:     20,
 	})
@@ -172,7 +172,7 @@ func (ws *WorkerService) processTask(task Task) error {
 				ws.log.Error("Failed to enqueue error event", "error", err)
 			}
 			go ws.sqsClient.DeleteMessage(ws.cancelContext, &sqs.DeleteMessageInput{
-				QueueUrl:      aws.String(ws.config.TaskQueueURL),
+				QueueUrl:      aws.String(ws.config.AWS.TaskQueueURL),
 				ReceiptHandle: task.Message.ReceiptHandle,
 			})
 
@@ -185,7 +185,7 @@ func (ws *WorkerService) processTask(task Task) error {
 	defer os.RemoveAll(taskDir)
 
 	_, err = ws.sqsClient.DeleteMessage(ws.cancelContext, &sqs.DeleteMessageInput{
-		QueueUrl:      aws.String(ws.config.TaskQueueURL),
+		QueueUrl:      aws.String(ws.config.AWS.TaskQueueURL),
 		ReceiptHandle: task.Message.ReceiptHandle,
 	})
 	if err != nil {
@@ -193,7 +193,7 @@ func (ws *WorkerService) processTask(task Task) error {
 	}
 
 	s3Key := ""
-	if ws.config.VideoBucketName != "" {
+	if ws.config.AWS.VideoBucketName != "" {
 		s3Key, err = ws.uploadVideoToS3(outputPath, event)
 		if err != nil {
 			return err
@@ -223,7 +223,7 @@ func (ws *WorkerService) uploadVideoToS3(outputPath string, message events.Event
 	)
 
 	_, err = ws.s3Uploader.Upload(ws.cancelContext, &s3.PutObjectInput{
-		Bucket: aws.String(ws.config.VideoBucketName),
+		Bucket: aws.String(ws.config.AWS.VideoBucketName),
 		Key:    aws.String(s3Key),
 		Body:   videoFile,
 	})
@@ -231,7 +231,7 @@ func (ws *WorkerService) uploadVideoToS3(outputPath string, message events.Event
 		return "", fmt.Errorf("S3 upload failed: %v", err)
 	}
 
-	ws.log.Info("Video uploaded to S3", "bucket", ws.config.VideoBucketName, "key", s3Key)
+	ws.log.Info("Video uploaded to S3", "bucket", ws.config.AWS.VideoBucketName, "key", s3Key)
 	return s3Key, nil
 }
 
@@ -303,7 +303,7 @@ func (ws *WorkerService) presignAndEnqueueResult(key string, sessionId string) {
 	}
 
 	_, err = ws.sqsClient.SendMessage(ws.cancelContext, &sqs.SendMessageInput{
-		QueueUrl:    aws.String(ws.config.ResultQueueURL),
+		QueueUrl:    aws.String(ws.config.AWS.ResultQueueURL),
 		MessageBody: aws.String(string(bytes))})
 	if err != nil {
 		ws.log.Error("failed to send message", "err", err)
@@ -314,7 +314,7 @@ func (ws *WorkerService) presignAndEnqueueResult(key string, sessionId string) {
 func (ws *WorkerService) handleReceiveMessageError(err error) {
 	ws.log.Error("Failed to receive message", "error", err)
 	if errors.As(err, &errQueueNotExist) {
-		slog.Error("Queue does not exist", "URL", ws.config.TaskQueueURL, "Base endpoint", ws.sqsClient.Options().BaseEndpoint)
+		slog.Error("Queue does not exist", "URL", ws.config.AWS.TaskQueueURL, "Base endpoint", ws.sqsClient.Options().BaseEndpoint)
 		os.Exit(1)
 	}
 }
@@ -326,7 +326,7 @@ func (ws *WorkerService) enqueueEvent(event events.Event) error {
 	}
 
 	_, err = ws.sqsClient.SendMessage(ws.cancelContext, &sqs.SendMessageInput{
-		QueueUrl:    aws.String(ws.config.ResultQueueURL),
+		QueueUrl:    aws.String(ws.config.AWS.ResultQueueURL),
 		MessageBody: aws.String(string(bytes)),
 	})
 	return err
