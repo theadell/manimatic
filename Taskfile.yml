@@ -1,0 +1,98 @@
+version: '3'
+
+vars:
+  PROJECT: manimatic
+  VERSION: '{{.VERSION | default "latest"}}'
+  DOCKER_USERNAME: '{{.DOCKER_USERNAME | default "adelll" }}'
+  DOCKER_PASSWORD: '{{.DOCKER_PASSWORD}}'
+
+tasks:
+  build:
+    desc: Build all Docker images
+    cmds:
+      - task: build-frontend
+      - task: build-api
+      - task: build-worker
+
+  build-frontend:
+    desc: Build frontend Docker image
+    dir: frontend
+    cmds:
+      - docker build -t {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:{{.VERSION}} .
+    sources:
+      - Dockerfile
+      - package.json
+      - src/**/*
+
+  build-api:
+    desc: Build API Docker image
+    dir: app
+    cmds:
+      - docker build -f Dockerfile.api -t {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:{{.VERSION}} .
+    sources:
+      - Dockerfile.api
+      - internal/api/**/*
+      - cmd/api/main.go
+
+  build-worker:
+    desc: Build worker Docker image
+    dir: app
+    cmds:
+      - docker build -f Dockerfile.worker -t {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:{{.VERSION}} .
+    sources:
+      - Dockerfile.worker
+      - internal/worker/**/*
+      - cmd/worker/main.go
+
+  tag:
+    desc: Tag all images with latest
+    cmds:
+      - task: tag-frontend
+      - task: tag-api
+      - task: tag-worker
+
+  tag-frontend:
+    cmds:
+      - docker tag {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:{{.VERSION}} {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:latest
+
+  tag-api:
+    cmds:
+      - docker tag {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:{{.VERSION}} {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:latest
+
+  tag-worker:
+    cmds:
+      - docker tag {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:{{.VERSION}} {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:latest
+
+  login:
+    desc: Login to Docker Hub
+    cmds:
+      - docker login 
+  push:
+    desc: Push all Docker images
+    deps: [login]
+    cmds:
+      - task: push-frontend
+      - task: push-api
+      - task: push-worker
+
+  push-frontend:
+    cmds:
+      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:{{.VERSION}}
+      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:latest
+
+  push-api:
+    cmds:
+      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:{{.VERSION}}
+      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:latest
+
+  push-worker:
+    cmds:
+      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:{{.VERSION}}
+      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:latest
+
+  all:
+    desc: Build, tag, and push all images
+    cmds:
+      - task: build
+      - task: tag
+      - task: push
