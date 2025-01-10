@@ -3,8 +3,8 @@ package worker
 import (
 	"log/slog"
 	"manimatic/internal/api/events"
+	"runtime/debug"
 	"sync"
-	"time"
 )
 
 type Task struct {
@@ -35,16 +35,37 @@ func (wp *WorkerPool) Start(processFunc func(Task) error) {
 		go func(workerN int) {
 			defer wp.wg.Done()
 			log := wp.log.With("Worker", workerN+1)
-			log.Debug("Worker start and ready to receive tasks")
-			for task := range wp.tasks {
-				log.Debug("processing a new message")
-				time.Sleep(time.Second * 2)
-				if err := processFunc(task); err != nil {
-					log.Error("Task Processing Failed", "error", err)
-				} else {
-					log.Debug("finished processing message successfully")
+
+			// Protect the entire worker goroutine from panics
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error("worker routine panic recovered",
+						"panic", r,
+						"stack", string(debug.Stack()))
 				}
+			}()
+
+			log.Debug("Worker start and ready to receive tasks")
+
+			for task := range wp.tasks {
+				// Protect individual task execution from panics
+				func(t Task) {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Error("task execution panic recovered",
+								"panic", r,
+								"stack", string(debug.Stack()))
+						}
+					}()
+
+					if err := processFunc(t); err != nil {
+						log.Error("Task Processing Failed", "error", err)
+					} else {
+						log.Debug("finished processing message successfully")
+					}
+				}(task)
 			}
+
 			log.Debug("Task channel closed. Exiting...")
 		}(i)
 	}
