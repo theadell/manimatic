@@ -46,6 +46,10 @@ type APIKeyConfig struct {
 	IsSet      bool
 }
 
+type WorkerMediaConfig struct {
+	BaseDir string
+}
+
 type Config struct {
 	Server     ServerConfig
 	AWS        AWSConfig
@@ -53,6 +57,7 @@ type Config struct {
 	Processing ProcessingConfig
 	OpenAI     APIKeyConfig
 	XAI        APIKeyConfig
+	Worker     WorkerMediaConfig
 }
 
 func (c *Config) registerServerConfig(r *Register) {
@@ -95,6 +100,10 @@ func (c *Config) registerAPIKeys(r *Register) {
 	r.String(&c.XAI.keySSMPath, "XAI_API_KEY_SSM_PATH", "AWS SSM Parameter Store path for XAI key", "")
 }
 
+func (c *Config) registerWorkerConfig(r *Register) {
+	r.String(&c.Worker.BaseDir, "WORKER_DIR", "Directory for worker temporary files", os.TempDir())
+}
+
 func LoadConfig() (*Config, error) {
 	config := &Config{}
 	r := &Register{}
@@ -105,6 +114,7 @@ func LoadConfig() (*Config, error) {
 	config.registerLoggingConfig(r)
 	config.registerProcessingConfig(r)
 	config.registerAPIKeys(r)
+	config.registerWorkerConfig(r)
 
 	flag.Parse()
 
@@ -269,6 +279,7 @@ func (c *Config) Debug() string {
 	b.WriteString("⚙️  Processing:\n")
 	b.WriteString(fmt.Sprintf("  ├─ Max Concurrency: %d\n", c.Processing.MaxConcurrency))
 	b.WriteString(fmt.Sprintf("  ├─ Moderation Enabled: %v\n", c.Processing.EnableModeration))
+	b.WriteString(fmt.Sprintf("  └─ Base Dir: %s\n", valueOrEmpty(c.Worker.BaseDir)))
 	b.WriteString(fmt.Sprintf("  └─ Features: %s\n\n", valueOrEmpty(c.Processing.FeaturesFlag)))
 
 	// API Keys (safely)

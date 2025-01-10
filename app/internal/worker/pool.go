@@ -2,14 +2,15 @@ package worker
 
 import (
 	"log/slog"
+	"manimatic/internal/api/events"
 	"sync"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
 type Task struct {
-	Message *types.Message
+	event          *events.Event
+	compileRequest *events.CompileRequest
+	h              *string
 }
 
 type WorkerPool struct {
@@ -36,12 +37,12 @@ func (wp *WorkerPool) Start(processFunc func(Task) error) {
 			log := wp.log.With("Worker", workerN+1)
 			log.Debug("Worker start and ready to receive tasks")
 			for task := range wp.tasks {
-				log.Debug("processing a new message", "message_id", task.Message.MessageId)
+				log.Debug("processing a new message")
 				time.Sleep(time.Second * 2)
 				if err := processFunc(task); err != nil {
 					log.Error("Task Processing Failed", "error", err)
 				} else {
-					log.Debug("finished processing message successfully", "message_id", task.Message.MessageId)
+					log.Debug("finished processing message successfully")
 				}
 			}
 			log.Debug("Task channel closed. Exiting...")

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"manimatic/internal/config"
 	"manimatic/internal/worker/manimexec/security"
 	"os"
 	"os/exec"
@@ -13,6 +14,13 @@ import (
 
 	"github.com/google/uuid"
 )
+
+type ManimTask struct {
+	ScriptPath string
+	OutputPath string
+	MediaDir   string
+	Quality    string
+}
 
 type ExecutionResult struct {
 	OutputPath string
@@ -25,56 +33,22 @@ type Executor struct {
 	baseDir   string
 	quality   Quality
 	timeout   time.Duration
-	workerUID uint32 // TODO
-	workerGID uint32 // TODO
+	workerUID uint32
+	workerGID uint32
 	validator *security.Validator
 }
 
-func NewExecutor(opts ...Option) *Executor {
-	e := &Executor{
-		baseDir:   defaultBaseDir,
+func MustNewExecutor(cfg *config.Config) *Executor {
+
+	tasksDir := MustTaskDir(cfg.Worker.BaseDir)
+
+	return &Executor{
+		baseDir:   tasksDir,
 		quality:   QualityLow,
 		timeout:   DefaultTimeout,
 		workerUID: 10001,
 		workerGID: 10001,
 		validator: security.NewValidator(nil),
-	}
-
-	for _, opt := range opts {
-		opt(e)
-	}
-
-	return e
-}
-
-type Option func(*Executor)
-
-func WithQuality(q Quality) Option {
-	return func(e *Executor) {
-		e.quality = q
-	}
-}
-
-func WithTimeout(t time.Duration) Option {
-	return func(e *Executor) {
-		e.timeout = t
-	}
-}
-
-func WithBaseDir(dir string) Option {
-	return func(e *Executor) {
-		e.baseDir = dir
-	}
-}
-
-func WithWorkerUID(uid uint32) Option {
-	return func(e *Executor) {
-		e.workerUID = uid
-	}
-}
-func WithWorkerGID(gid uint32) Option {
-	return func(e *Executor) {
-		e.workerUID = gid
 	}
 }
 
@@ -105,7 +79,7 @@ func (e *Executor) ExecuteScript(ctx context.Context, script string, sessionID s
 
 	// Create cleanup function
 	cleanup := func() {
-		os.RemoveAll(workDir)
+		// os.RemoveAll(workDir)
 	}
 
 	// Setup cancellation
@@ -129,8 +103,13 @@ func (e *Executor) ExecuteScript(ctx context.Context, script string, sessionID s
 	// Prepare output path
 	outputPath := filepath.Join(workDir, "output.mp4")
 
+	absoluteOutputPath, err := filepath.Abs(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve absolute path for output: %w", err)
+	}
+
 	// Execute the script
-	result, err := e.runManimProcess(ctx, scriptPath, outputPath)
+	result, err := e.runManimProcess(ctx, scriptPath, absoluteOutputPath)
 	if err != nil {
 		return nil, err
 	}
@@ -155,10 +134,10 @@ func (e *Executor) writeScript(workDir, script string) (string, error) {
 }
 
 func (e *Executor) runManimProcess(ctx context.Context, scriptPath, outputPath string) (*ExecutionResult, error) {
-	// Prepare command
+
 	cmd := exec.CommandContext(ctx, "manim",
 		"render",
-		"--media_dir", "/manim/worker",
+		"--media_dir", e.baseDir,
 		string(e.quality),
 		"-o", outputPath,
 		scriptPath,
@@ -243,6 +222,27 @@ func checkOutputFile(path string) error {
 			return fmt.Errorf("file does not exist: %w", err)
 		}
 		return fmt.Errorf("cannot access file: %w", err)
+	}
+	return nil
+}
+
+func MustTaskDir(baseDir string) string {
+	tasksDir := filepath.Join(baseDir, "tasks")
+	if err := ensureDirExists(tasksDir); err != nil {
+		panic(fmt.Errorf("failed to initialize tasks directory: %w", err))
+	}
+	return tasksDir
+}
+
+func ensureDirExists(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			if err := os.MkdirAll(path, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", path, err)
+			}
+		} else {
+			return fmt.Errorf("failed to access directory %s: %w", path, err)
+		}
 	}
 	return nil
 }
