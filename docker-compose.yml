@@ -68,6 +68,7 @@ services:
     container_name: manimatic-worker 
     environment:
       <<: [*aws-localstack-config, *aws-credentials]
+      WORKER_DIR: /manim/worker
 secrets:
   openai_api_key:
     file: openai_api_key.secret

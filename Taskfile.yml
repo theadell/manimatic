@@ -1,98 +1,244 @@
 version: '3'
 
+# ===========================================
+# Variables
+# ===========================================
+
 vars:
-  PROJECT: manimatic
-  VERSION: '{{.VERSION | default "latest"}}'
+  # Docker build configuration
   DOCKER_USERNAME: '{{.DOCKER_USERNAME | default "adelll" }}'
   DOCKER_PASSWORD: '{{.DOCKER_PASSWORD}}'
+  DOCKER_VERSION: '{{.VERSION | default "latest"}}'
+  DOCKER_PROJECT: manimatic
+
+  # Local development AWS configuration
+  LOCAL_AWS_REGION: eu-central-1
+  LOCAL_AWS_ENDPOINT: http://localhost:4566
+  LOCAL_AWS_ACCESS_KEY: test
+  LOCAL_AWS_SECRET_KEY: test
+    
+  # Queue configuration
+  LOCAL_QUEUE_TASK_NAME: manim-task-queue
+  LOCAL_QUEUE_RESULT_NAME: manim-result-queue
+  LOCAL_QUEUE_TASK_URL: http://localhost:4566/000000000000/manim-task-queue
+  LOCAL_QUEUE_RESULT_URL: http://localhost:4566/000000000000/manim-result-queue
+    
+  # Storage configuration
+  LOCAL_STORAGE_BUCKET: manim-worker-bucket
+
+  # LLM Configuration 
+  OPENAI_API_KEY_FILE: ../openai_api_key.secret
+  XAI_API_KEY_FILE: ../xai_key.secret
+
+  # FEATURES: 
+  FEATURES: user-compile
+
+  # Worker media output dirs 
+  LOCAL_WORKER_DIR: './artifacts'        # for inspection in dev
+
+
+# ===========================================
+# Tasks
+# ===========================================
 
 tasks:
+  # -------------------------------------------
+  # Local Development Tasks
+  # -------------------------------------------
+  
+  dev:
+    desc: Start local development environment
+    cmds:
+      - task: dev:setup
+      - echo "🚀 Local environment is ready! Run services with:"
+      - echo "   task dev:api    - Start API server"
+      - echo "   task dev:worker - Start worker"
+      - echo "   task dev:front  - Start frontend"
+
+  dev:setup:
+    desc: Setup local development environment
+    cmds:
+      - task: dev:localstack:start
+      - sleep 5
+      - task: dev:aws:setup
+
+  dev:down:
+    desc: Stop local development environment
+    cmds:
+      - task: dev:localstack:stop
+      - echo "✨ Local environment cleaned up"
+
+  # LocalStack Management
+  dev:localstack:start:
+    desc: Start LocalStack
+    cmds:
+      - docker run -d --name manimatic-localstack 
+        -p 4566:4566 
+        -e SERVICES=s3,sqs,ssm 
+        -e DEBUG=1 
+        -e LOCALSTACK_HOST=localhost 
+        -e DEFAULT_REGION={{.LOCAL_AWS_REGION}}
+        localstack/localstack:latest
+    status:
+      - docker ps | grep manimatic-localstack
+
+  dev:localstack:stop:
+    desc: Stop and remove LocalStack container
+    cmds:
+      - docker stop manimatic-localstack || true
+      - docker rm manimatic-localstack || true
+
+  # AWS Resource Setup
+  dev:aws:setup:
+    desc: Setup AWS local resources
+    cmds:
+      - task: dev:aws:create-queues
+      - task: dev:aws:create-bucket
+      - echo "✅ AWS resources created"
+
+  dev:aws:create-queues:
+    internal: true
+    cmds:
+      - |
+        awslocal sqs create-queue \
+          --queue-name {{.LOCAL_QUEUE_TASK_NAME}} \
+          --region {{.LOCAL_AWS_REGION}}
+      - |
+        awslocal sqs create-queue \
+          --queue-name {{.LOCAL_QUEUE_RESULT_NAME}} \
+          --region {{.LOCAL_AWS_REGION}}
+
+  dev:aws:create-bucket:
+    internal: true
+    cmds:
+      - |
+        awslocal s3 mb \
+          s3://{{.LOCAL_STORAGE_BUCKET}} \
+          --region {{.LOCAL_AWS_REGION}}
+
+  # Service Running
+  dev:api:
+    desc: Run API locally
+    dir: app
+    cmds:
+      - |
+        AWS_ENDPOINT_URL={{.LOCAL_AWS_ENDPOINT}} \
+        AWS_DEFAULT_REGION={{.LOCAL_AWS_REGION}} \
+        AWS_ACCESS_KEY_ID={{.LOCAL_AWS_ACCESS_KEY}} \
+        AWS_SECRET_ACCESS_KEY={{.LOCAL_AWS_SECRET_KEY}} \
+        VIDEO_BUCKET_NAME={{.LOCAL_STORAGE_BUCKET}} \
+        TASK_QUEUE_URL={{.LOCAL_QUEUE_TASK_URL}} \
+        RESULT_QUEUE_URL={{.LOCAL_QUEUE_RESULT_URL}} \
+        LOG_LEVEL=debug \
+        OPENAI_API_KEY_FILE={{.OPENAI_API_KEY_FILE}} \
+        XAI_API_KEY_FILE={{.XAI_API_KEY_FILE}} \
+        FEATURES={{.FEATURES}} \
+        go run ./cmd/api/main.go
+
+  dev:worker:
+    desc: Run worker locally
+    dir: app
+    cmds:
+      - |
+        AWS_ENDPOINT_URL={{.LOCAL_AWS_ENDPOINT}} \
+        AWS_DEFAULT_REGION={{.LOCAL_AWS_REGION}} \
+        AWS_ACCESS_KEY_ID={{.LOCAL_AWS_ACCESS_KEY}} \
+        AWS_SECRET_ACCESS_KEY={{.LOCAL_AWS_SECRET_KEY}} \
+        VIDEO_BUCKET_NAME={{.LOCAL_STORAGE_BUCKET}} \
+        TASK_QUEUE_URL={{.LOCAL_QUEUE_TASK_URL}} \
+        RESULT_QUEUE_URL={{.LOCAL_QUEUE_RESULT_URL}} \
+        LOG_LEVEL=debug \
+        FEATURES={{.FEATURES}} \
+        WORKER_DIR={{.LOCAL_WORKER_DIR}} \
+        go run ./cmd/worker/main.go
+
+  dev:front:
+    desc: Run frontend development server
+    dir: frontend
+    cmds:
+      - npm install
+      - npm run dev
+
+  # Testing
+  dev:test:message:
+    desc: Send a test message to the task queue
+    cmds:
+      - |
+        echo '{"type": "script", "session_id": "session_123", "status": "success", "content": "from manim import *\n\nclass CreateCircle(Scene):\n    def construct(self):\n        circle = Circle()  \n        circle.set_fill(PINK, opacity=0.5)  \n        self.play(Create(circle))  "}' | \
+        awslocal sqs send-message \
+          --queue-url {{.LOCAL_QUEUE_TASK_URL}} \
+          --message-body file:///dev/stdin \
+          --region {{.LOCAL_AWS_REGION}}
+
+  # -------------------------------------------
+  # Docker Build & Deploy Tasks
+  # -------------------------------------------
+  
   build:
     desc: Build all Docker images
     cmds:
-      - task: build-frontend
-      - task: build-api
-      - task: build-worker
+      - task: build:frontend
+      - task: build:api
+      - task: build:worker
 
-  build-frontend:
+  build:frontend:
     desc: Build frontend Docker image
     dir: frontend
     cmds:
-      - docker build -t {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:{{.VERSION}} .
+      - docker build -t {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-frontend:{{.DOCKER_VERSION}} .
     sources:
       - Dockerfile
       - package.json
       - src/**/*
 
-  build-api:
+  build:api:
     desc: Build API Docker image
     dir: app
     cmds:
-      - docker build -f Dockerfile.api -t {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:{{.VERSION}} .
+      - docker build -f Dockerfile.api -t {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-api:{{.DOCKER_VERSION}} .
     sources:
       - Dockerfile.api
       - internal/api/**/*
       - cmd/api/main.go
 
-  build-worker:
+  build:worker:
     desc: Build worker Docker image
     dir: app
     cmds:
-      - docker build -f Dockerfile.worker -t {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:{{.VERSION}} .
+      - docker build -f Dockerfile.worker -t {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-worker:{{.DOCKER_VERSION}} .
     sources:
       - Dockerfile.worker
       - internal/worker/**/*
       - cmd/worker/main.go
 
-  tag:
+  # Deployment tasks
+  deploy:tag:
     desc: Tag all images with latest
     cmds:
-      - task: tag-frontend
-      - task: tag-api
-      - task: tag-worker
+      - docker tag {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-frontend:{{.DOCKER_VERSION}} {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-frontend:latest
+      - docker tag {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-api:{{.DOCKER_VERSION}} {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-api:latest
+      - docker tag {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-worker:{{.DOCKER_VERSION}} {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-worker:latest
 
-  tag-frontend:
-    cmds:
-      - docker tag {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:{{.VERSION}} {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:latest
-
-  tag-api:
-    cmds:
-      - docker tag {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:{{.VERSION}} {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:latest
-
-  tag-worker:
-    cmds:
-      - docker tag {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:{{.VERSION}} {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:latest
-
-  login:
+  deploy:login:
     desc: Login to Docker Hub
     cmds:
       - docker login 
-  push:
+
+  deploy:push:
     desc: Push all Docker images
-    deps: [login]
+    deps: [deploy:login]
     cmds:
-      - task: push-frontend
-      - task: push-api
-      - task: push-worker
+      - docker push {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-frontend:{{.DOCKER_VERSION}}
+      - docker push {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-frontend:latest
+      - docker push {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-api:{{.DOCKER_VERSION}}
+      - docker push {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-api:latest
+      - docker push {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-worker:{{.DOCKER_VERSION}}
+      - docker push {{.DOCKER_USERNAME}}/{{.DOCKER_PROJECT}}-worker:latest
 
-  push-frontend:
-    cmds:
-      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:{{.VERSION}}
-      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-frontend:latest
-
-  push-api:
-    cmds:
-      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:{{.VERSION}}
-      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-api:latest
-
-  push-worker:
-    cmds:
-      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:{{.VERSION}}
-      - docker push {{.DOCKER_USERNAME}}/{{.PROJECT}}-worker:latest
-
-  all:
+  # Complete workflows
+  deploy:all:
     desc: Build, tag, and push all images
     cmds:
       - task: build
-      - task: tag
-      - task: push
+      - task: deploy:tag
+      - task: deploy:push
