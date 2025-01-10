@@ -107,12 +107,11 @@ func (ws *WorkerService) processTask(task Task) error {
 	res, err := ws.executer.ExecuteScript(context.TODO(), task.compileRequest.Script, task.event.SessionID)
 	if err != nil {
 		ws.log.Error("failed to execute manim script", "error", err.Error())
-		if err := ws.queue.PublishResult(ws.cancelContext, animation.NewErrorResult(task.event.SessionID, err)); err != nil {
-			ws.log.Error("Failed to enqueue error event", "error", err)
-		}
 		go func() {
-			err := ws.queue.DeleteTask(ws.cancelContext, task.h)
-			if err != nil {
+			if err := ws.queue.PublishResult(ws.cancelContext, animation.NewErrorResult(task.event.SessionID, err)); err != nil {
+				ws.log.Error("Failed to enqueue error event", "error", err)
+			}
+			if err := ws.queue.DeleteTask(ws.cancelContext, task.h); err != nil {
 				ws.log.Error("failed to delete task", "error", err, "handle", task.h)
 			}
 		}()
@@ -120,28 +119,27 @@ func (ws *WorkerService) processTask(task Task) error {
 	}
 
 	outputPath, taskDir := res.OutputPath, res.WorkingDir
-	defer os.RemoveAll(taskDir)
-
 	go func() {
-		err := ws.queue.DeleteTask(ws.cancelContext, task.h)
-		if err != nil {
+		// delete the task
+		if err := ws.queue.DeleteTask(ws.cancelContext, task.h); err != nil {
 			ws.log.Error("failed to delete task", "error", err, "handle", task.h)
-		}
-	}()
-	// upload the video, create presigned url and send a success message to the API
-	go func() {
-
-		url, err := ws.storage.UploadAndPresign(context.TODO(), outputPath, task.event.SessionID)
-		if err != nil {
 			return
 		}
 
-		err = ws.queue.PublishResult(ws.cancelContext, animation.NewSuccessResult(task.event.SessionID, url))
+		// upload and publish result
+		url, err := ws.storage.UploadAndPresign(context.TODO(), outputPath, task.event.SessionID)
 		if err != nil {
+			ws.log.Error("failed to upload and presign", "error", err)
+			return
+		}
+
+		if err := ws.queue.PublishResult(ws.cancelContext, animation.NewSuccessResult(task.event.SessionID, url)); err != nil {
 			ws.log.Error("failed to send message", "err", err)
 			return
 		}
 
+		// Only remove directory after successful upload and publish
+		os.RemoveAll(taskDir)
 	}()
 
 	return nil
