@@ -31,3 +31,5 @@ openai_api_key.secret
 *.secret
 # media folder 
 media
+app/media
+app/artifacts/
