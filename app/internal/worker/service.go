@@ -14,8 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
-var errQueueNotExist = &types.QueueDoesNotExist{}
-
 type VideoStorage interface {
 	UploadAndPresign(ctx context.Context, outputPath string, sessionId string) (string, error)
 }
@@ -61,22 +59,21 @@ func (ws *WorkerService) Run() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	go func() {
-		for {
-			select {
-			case <-ws.cancelContext.Done():
-				return
-			default:
-				ws.fetchAndSubmitMessage()
-			}
-		}
-	}()
+	ws.startMessageLoop()
 
 	<-sigChan
 	ws.log.Info("Shutting down gracefully...")
 	ws.Cleanup()
 	ws.log.Info("Server shutdown")
 	os.Exit(0)
+}
+
+func (ws *WorkerService) startMessageLoop() {
+	go func() {
+		for ws.cancelContext.Err() == nil {
+			ws.fetchAndSubmitMessage()
+		}
+	}()
 }
 
 func (ws *WorkerService) fetchAndSubmitMessage() {
@@ -103,50 +100,60 @@ func (ws *WorkerService) fetchAndSubmitMessage() {
 }
 
 func (ws *WorkerService) processTask(task Task) error {
-
-	res, err := ws.executer.ExecuteScript(context.TODO(), task.compileRequest.Script, task.event.SessionID)
+	res, err := ws.executer.ExecuteScript(ws.cancelContext, task.compileRequest.Script, task.event.SessionID)
 	if err != nil {
-		ws.log.Error("failed to execute manim script", "error", err.Error())
-		go func() {
-			if err := ws.queue.PublishResult(ws.cancelContext, animation.NewErrorResult(task.event.SessionID, err)); err != nil {
-				ws.log.Error("Failed to enqueue error event", "error", err)
-			}
-			if err := ws.queue.DeleteTask(ws.cancelContext, task.h); err != nil {
-				ws.log.Error("failed to delete task", "error", err, "handle", task.h)
-			}
-		}()
-		return nil
+		return ws.handleExecutionError(task, err)
+	}
+	ws.handleSuccessfulExecution(task, res)
+	return nil
+}
+
+func (ws *WorkerService) handleExecutionError(task Task, err error) error {
+	ws.log.Error("failed to execute manim script", "error", err.Error())
+	go ws.cleanupFailedTask(task, err)
+	return nil
+}
+func (ws *WorkerService) cleanupFailedTask(task Task, err error) {
+	if err := ws.queue.PublishResult(ws.cancelContext, animation.NewErrorResult(task.event.SessionID, err)); err != nil {
+		ws.log.Error("Failed to enqueue error event", "error", err)
+	}
+	if err := ws.queue.DeleteTask(ws.cancelContext, task.h); err != nil {
+		ws.log.Error("failed to delete task", "error", err, "handle", task.h)
+	}
+}
+
+func (ws *WorkerService) handleSuccessfulExecution(task Task, res *manimexec.ExecutionResult) {
+	go ws.processSuccess(task, res)
+}
+
+func (ws *WorkerService) processSuccess(task Task, res *manimexec.ExecutionResult) {
+	// delete task first
+	if err := ws.queue.DeleteTask(ws.cancelContext, task.h); err != nil {
+		ws.log.Error("failed to delete task", "error", err, "handle", task.h)
+		return
 	}
 
-	outputPath, taskDir := res.OutputPath, res.WorkingDir
-	go func() {
-		// delete the task
-		if err := ws.queue.DeleteTask(ws.cancelContext, task.h); err != nil {
-			ws.log.Error("failed to delete task", "error", err, "handle", task.h)
-			return
-		}
+	// upload and get url
+	url, err := ws.storage.UploadAndPresign(ws.cancelContext, res.OutputPath, task.event.SessionID)
+	if err != nil {
+		ws.log.Error("failed to upload and presign", "error", err)
+		return
+	}
 
-		// upload and publish result
-		url, err := ws.storage.UploadAndPresign(context.TODO(), outputPath, task.event.SessionID)
-		if err != nil {
-			ws.log.Error("failed to upload and presign", "error", err)
-			return
-		}
+	// publish result
+	if err := ws.queue.PublishResult(ws.cancelContext, animation.NewSuccessResult(task.event.SessionID, url)); err != nil {
+		ws.log.Error("failed to send message", "err", err)
+		return
+	}
 
-		if err := ws.queue.PublishResult(ws.cancelContext, animation.NewSuccessResult(task.event.SessionID, url)); err != nil {
-			ws.log.Error("failed to send message", "err", err)
-			return
-		}
-
-		// Only remove directory after successful upload and publish
-		os.RemoveAll(taskDir)
-	}()
-
-	return nil
+	// cleanup only after successful processing
+	os.RemoveAll(res.WorkingDir)
 }
 
 func (ws *WorkerService) handleReceiveMessageError(err error) {
 	ws.log.Error("Failed to receive message", "error", err)
+
+	var errQueueNotExist = &types.QueueDoesNotExist{}
 	if errors.As(err, &errQueueNotExist) {
 		slog.Error("Queue does not exist", "URL", ws.config.AWS.TaskQueueURL)
 		os.Exit(1)
